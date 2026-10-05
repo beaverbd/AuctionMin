@@ -14,5 +14,6 @@ Core.lua
 Market.lua
 Activity.lua
 Scan.lua
+Search.lua
 Tooltip.lua
 Tab.lua

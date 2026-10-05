@@ -56,7 +56,7 @@ local function Finish(total, keyCount, skipped, compared)
     if ns.ObservedSeconds() < ns.MIN_OBSERVED then
         ns.Print("activity needs more data: %s.", ns.SCAN_ADVICE)
     elseif not compared then
-        ns.Print("activity not updated: the previous scan is more than 2 hours old.")
+        ns.Print("activity: the previous full scan is more than 2 hours old, this scan starts a new comparison.")
     end
     if ns.RefreshTab then
         ns.RefreshTab()
@@ -71,35 +71,14 @@ local function Save(scan, total, skipped)
         keys[#keys + 1] = key
     end
     local now = ns.Now()
-    local items = realm.items
-    local snapshot = { at = now, data = {} }
+    local previousScanAt = realm.scannedAt
     local index = 0
 
     local function Step()
         local stop = math.min(#keys, index + SAVE_BATCH_SIZE)
         for i = index + 1, stop do
             local key = keys[i]
-            local counts = scan.prices[key]
-            local prices, listed = {}, 0
-            for price, count in pairs(counts) do
-                prices[#prices + 1] = price
-                listed = listed + count
-            end
-            table.sort(prices)
-
-            local price = ns.SnapshotPrice(prices, counts)
-            local entry = items[key]
-            if entry then
-                entry[1] = ns.BlendMarket(entry[1], entry[2], price, now)
-                entry[2] = now
-                entry[3] = prices[1]
-                entry[4] = listed
-            else
-                entry = { price, now, prices[1], listed }
-                items[key] = entry
-            end
-            entry[5] = scan.links[key]
-            snapshot.data[key] = ns.SerializeGroups(scan.groups[key])
+            ns.ApplyPrice(key, scan.prices[key], now, nil, scan.links[key])
         end
         index = stop
         if index < #keys then
@@ -107,14 +86,13 @@ local function Save(scan, total, skipped)
             return
         end
 
-        for _, entry in pairs(items) do
-            if entry[2] < now then
+        for key, entry in pairs(realm.items) do
+            if not scan.prices[key] then
                 entry[4] = 0
             end
         end
         realm.scannedAt = now
-        ns.UpdateActivity(realm.snapshot, scan.groups, now, function(compared)
-            realm.snapshot = snapshot
+        ns.ObserveScan(scan.groups, now, previousScanAt, function(compared)
             Finish(total, #keys, skipped, compared)
         end)
     end
@@ -155,13 +133,12 @@ local function ReadRow(scan, i)
     end
     counts[unitPrice] = (counts[unitPrice] or 0) + count
 
-    local seller = ownerFullName or owner
-    if not seller or ns.isSecret(seller) then
-        seller = ""
+    local seller = ns.SellerName(ownerFullName or owner)
+    if seller ~= ns.playerName then
+        local timeLeft = C_AuctionHouse.GetReplicateItemTimeLeft(i) or 1
+        local band = math.max(0, math.min(3, timeLeft - 1))
+        ns.AddLot(scan.groups[key], seller, unitPrice, band, count)
     end
-    local timeLeft = C_AuctionHouse.GetReplicateItemTimeLeft(i) or 1
-    local band = math.max(0, math.min(3, timeLeft - 1))
-    ns.AddLot(scan.groups[key], seller, unitPrice, band, count)
     return true
 end
 

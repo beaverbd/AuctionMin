@@ -16,6 +16,7 @@ local COLUMNS = {
 
 local SETTINGS = {
     { option = "auto", label = "Scan when the auction house opens" },
+    { option = "learnFromSearches", label = "Learn from items you browse" },
     { option = "showStack", label = "Stack price in bag tooltips" },
     { option = "showActivity", label = "Sales activity in tooltips" },
 }

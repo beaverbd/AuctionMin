@@ -74,6 +74,25 @@ function ns.FormatDuration(seconds)
     return math.floor(minutes / 1440 + 0.5) .. " days"
 end
 
+function ns.SellerName(name)
+    if type(name) ~= "string" or ns.isSecret(name) then
+        return ""
+    end
+    return name:match("^[^-]*")
+end
+
+function ns.KeyFromItemKey(itemKey)
+    local itemID = itemKey and itemKey.itemID
+    if not itemID then
+        return nil
+    end
+    local suffix = itemKey.itemSuffix or 0
+    if suffix == 0 or not ns.IsEquippable(itemID) then
+        return itemID
+    end
+    return itemID .. ":" .. suffix
+end
+
 function ns.GetPrice(key)
     local entry = ns.realm and ns.realm.items[key]
     if entry then
@@ -150,18 +169,27 @@ local function CountItems()
     return n
 end
 
-local DB_VERSION = 2
+local DB_VERSION = 4
 
 local function InitDB()
     local fresh = AuctionMinDB == nil
     AuctionMinDB = AuctionMinDB or {}
     local db = AuctionMinDB
-    if not fresh and (db.version or 1) < DB_VERSION then
+    if not fresh and (db.version or 1) < 2 then
         db.realms = nil
         ns.Print("prices are now market prices: stored data was reset, please run a new scan.")
+    elseif not fresh and db.version < DB_VERSION and db.realms then
+        for _, realm in pairs(db.realms) do
+            realm.snapshot = nil
+            if db.version == 3 then
+                realm.activity = nil
+                realm.lots = nil
+                realm.observed = nil
+            end
+        end
     end
     db.version = DB_VERSION
-    for option, default in pairs({ auto = true, showStack = true, showActivity = true }) do
+    for option, default in pairs({ auto = true, showStack = true, showActivity = true, learnFromSearches = true }) do
         if db[option] == nil then
             db[option] = default
         end
@@ -175,7 +203,9 @@ local function InitDB()
     local realm = db.realms[key]
     realm.activity = realm.activity or {}
     realm.observed = realm.observed or { 0, 0 }
+    realm.lots = realm.lots or {}
 
+    ns.playerName = ns.SellerName(UnitName("player"))
     ns.db = db
     ns.realmKey = key
     ns.realm = realm
@@ -222,7 +252,7 @@ SlashCmdList.AUCTIONMIN = function(msg)
         wipe(ns.realm.items)
         wipe(ns.realm.activity)
         ns.realm.observed = { 0, 0 }
-        ns.realm.snapshot = nil
+        wipe(ns.realm.lots)
         ns.realm.scannedAt = 0
         ns.Print("prices and activity for %s cleared.", ns.realmKey)
     elseif cmd == "" or cmd == "help" then

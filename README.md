@@ -16,18 +16,19 @@ Auction market price (updated 2h ago)
 - Full auction house scan with one click, or automatically when you open the auction house.
 - Market price **per unit** that ignores single underpriced or overpriced listings; bag tooltips also show the price for the whole stack.
 - Sales activity: estimated units sold per day and how many days the current supply would last.
-- An **AuctionMin** tab in the auction house with settings and the most actively traded items, by units or by gold per day.
+- Learns from what you browse: opening an item in the Buy tab updates its price and activity, even while the full scan is on cooldown.
+- An **AuctionMin** tab in the auction house with settings and the most actively traded items, sortable by sales, supply, market price or gold per day.
 - Every price shows how old it is, so stale prices are easy to spot.
 - Nothing else to install: the libraries it uses are bundled.
 
 ## How the market price works
 
-1. Each scan takes the cheapest part of the units listed for an item and uses the middle price of that group, weighted by quantity. A few bait listings can't pull it down, and the result is always a price that is actually listed.
-   - The size of that part depends on supply: about 1.5 / √(total units) of it, but at least 5%. With 10 units on sale it's about half of them, with 100 units 15%, from about 1000 units 5%. A rare item needs several cheap listings before the cheap price counts, while for a common reagent a large cheap stack is real supply.
-   - The group may grow up to twice that size, but stops early when the price jumps by more than 20%.
-2. The new value is blended with the previous one depending on how much time has passed (3 day half-life). One unusual scan can't wreck the price, and scanning every hour gives the same result as scanning once a day.
+AuctionMin takes the cheapest part of the units listed for an item and uses the middle price of that group, weighted by quantity. A few bait listings can't pull it down, and the result is always a price that is actually listed.
 
-The lowest buyout from the latest scan is kept as well: `/amin <item link>` prints both.
+- The size of that part depends on supply: about 1.5 / √(total units) of it, but at least 5%. With 10 units on sale it's about half of them, with 100 units 15%, from about 1000 units 5%. A rare item needs several cheap listings before the cheap price counts, while for a common reagent a large cheap stack is real supply.
+- The group may grow up to twice that size, but stops early when the price jumps by more than 20%.
+
+The price always comes from the latest full scan or the latest time you opened the item, so it matches what the auction house shows now. The lowest buyout is kept as well: `/amin <item link>` prints both.
 
 ## How sales activity works
 
@@ -35,11 +36,21 @@ The auction house doesn't report sales, so AuctionMin compares each scan with th
 
 - Units that disappeared from a seller's listings count as sold, but only if their time left shows they couldn't have expired in between.
 - When the same seller lists new units of the item at the same time, they are treated as a cancelled and reposted auction, not a sale.
-- Sold units are divided by the observed time and smoothed over days, like the market price.
+- Sold units are divided by the observed time. Older observations fade (their weight halves every 3 days), so one unusual hour can't dominate for long.
 
 **To see activity, run at least 3 scans 15-60 minutes apart.** Scans more than 2 hours apart don't count, because most auctions could have expired in between. The more such scans you run over several days, the better the estimates; the AuctionMin tab shows how much scan time they are based on. The previous scan is saved, so logging out between two scans is fine as long as they are less than 2 hours apart.
 
-The numbers are estimates and lean low: a seller who restocks at the same price hides their own sales, and auctions with a bid but no buyout are ignored. They are meant to tell "barely sells" from "sells by the hundreds", not to count every sale.
+The numbers are estimates and lean low: a seller who restocks at the same price hides their own sales, and auctions with a bid but no buyout are ignored. They are meant to tell "barely sells" from "sells by the hundreds", not to count every sale. Your own auctions are left out of activity.
+
+## Learning from what you browse
+
+AuctionMin never sends searches of its own; it reads what the auction house shows you:
+
+- **Opening an item** (its list of auctions in the Buy tab) updates the item's market price, lowest buyout and supply the same way a full scan does. Long lists that are only partly loaded still update the price when the cheapest part is loaded.
+- **Search results** update the lowest buyout and the number listed for every item in the list.
+- **Opening the same piece of gear again** 5 minutes to 2 hours later adds to its sales activity, just like two full scans would. Stackable items don't count here: the auction house merges their auctions by price across sellers, so a seller reposting at a new price would look like a sale.
+
+You can turn this off with the "Learn from items you browse" setting.
 
 ## Usage
 
@@ -48,6 +59,7 @@ Open the auction house. If the last full scan was more than 15 minutes ago, Auct
 The **AuctionMin** tab next to Buy, Sell and Auctions has these settings:
 
 - Scan when the auction house opens
+- Learn from items you browse
 - Stack price in bag tooltips
 - Sales activity in tooltips
 
