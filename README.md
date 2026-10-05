@@ -2,7 +2,7 @@
 
 A lightweight auction house price addon for **World of Warcraft: Forever** (interface 16001).
 
-AuctionMin scans the whole auction house and shows the lowest buyout per item in item tooltips — in your bags, bank, chat links, merchant windows and anywhere else an item tooltip appears.
+AuctionMin scans the whole auction house and shows the lowest buyout per item in item tooltips: in your bags, bank, chat links, merchant windows and anywhere else an item tooltip appears.
 
 ```
 Auction House (scanned 2h ago)
@@ -15,7 +15,7 @@ Auction House (scanned 2h ago)
 - Full auction house scan with one click, or automatically when you open the auction house.
 - Lowest buyout **per unit**; bag tooltips also show the price for the whole stack.
 - Prices are stored per realm and faction and keep their age, so old prices are easy to spot.
-- No dependencies, no options window — just tooltips and a few slash commands.
+- No dependencies and no options window, just tooltips and a few slash commands.
 
 ## Usage
 
