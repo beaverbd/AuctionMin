@@ -3,7 +3,7 @@ local ADDON, ns = ...
 ns.isSecret = issecretvalue or function() return false end
 
 ns.HALF_LIFE = 3 * 24 * 60 * 60
-ns.MIN_OBSERVED = 30 * 60
+ns.MIN_OBSERVED = 25 * 60
 ns.SCAN_ADVICE = "run at least 3 scans 15-60 minutes apart; scans more than 2 hours apart don't count"
 
 function ns.Decay(value, since, now)

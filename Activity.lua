@@ -129,13 +129,15 @@ end
 function ns.ObserveLots(key, groups, now)
     local lots = ns.realm.lots
     local previous = lots[key]
+    local compared = false
     if previous then
         local dt = now - previous.at
         if dt < MIN_GAP then
-            return
+            return false
         end
         if dt <= MAX_GAP then
             AddActivity(key, SoldUnits(ParseGroups(previous.data), groups, dt), dt, now)
+            compared = true
         end
     end
     if next(groups) then
@@ -143,6 +145,7 @@ function ns.ObserveLots(key, groups, now)
     else
         lots[key] = nil
     end
+    return compared
 end
 
 function ns.ObserveScan(scanGroups, now, previousScanAt, done)
@@ -158,12 +161,15 @@ function ns.ObserveScan(scanGroups, now, previousScanAt, done)
     end
     local empty = {}
     local index = 0
+    local comparedKeys = 0
 
     local function Step()
         local stop = math.min(#keys, index + BATCH_SIZE)
         for i = index + 1, stop do
             local key = keys[i]
-            ns.ObserveLots(key, scanGroups[key] or empty, now)
+            if ns.ObserveLots(key, scanGroups[key] or empty, now) then
+                comparedKeys = comparedKeys + 1
+            end
         end
         index = stop
         if index < #keys then
@@ -172,7 +178,7 @@ function ns.ObserveScan(scanGroups, now, previousScanAt, done)
         end
 
         local dt = now - previousScanAt
-        local compared = previousScanAt > 0 and dt > 0 and dt <= MAX_GAP
+        local compared = comparedKeys > 0 and previousScanAt > 0 and dt > 0 and dt <= MAX_GAP
         if compared then
             local observed = realm.observed
             observed[1] = ns.Decay(observed[1], observed[2], now) + dt
