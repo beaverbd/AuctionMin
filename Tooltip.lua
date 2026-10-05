@@ -35,7 +35,8 @@ local function OnItemTooltip(tooltip, data)
         return
     end
     local link = ns.IsEquippable(itemID) and TooltipLink(data) or nil
-    local price, seenAt = ns.GetPrice(ns.PriceKey(itemID, link))
+    local key = ns.PriceKey(itemID, link)
+    local price, seenAt = ns.GetPrice(key)
     if not price then
         return
     end
@@ -45,9 +46,18 @@ local function OnItemTooltip(tooltip, data)
     tooltip:AddLine("Auction market price |cff808080(updated " .. age .. " ago)|r", LABEL_R, LABEL_G, LABEL_B)
     tooltip:AddDoubleLine("   Per item", ns.FormatMoney(price), 1, 1, 1, 1, 1, 1)
 
-    local count = BagStackCount(tooltip)
-    if count and count > 1 then
-        tooltip:AddDoubleLine(("   Stack of %d"):format(count), ns.FormatMoney(price * count), 1, 1, 1, 1, 1, 1)
+    if ns.db.showStack then
+        local count = BagStackCount(tooltip)
+        if count and count > 1 then
+            tooltip:AddDoubleLine(("   Stack of %d"):format(count), ns.FormatMoney(price * count), 1, 1, 1, 1, 1, 1)
+        end
+    end
+
+    if ns.db.showActivity then
+        local activity = ns.ActivityText(key)
+        if activity then
+            tooltip:AddLine("   " .. activity, 1, 1, 1)
+        end
     end
 end
 

@@ -45,50 +45,78 @@ local function SetState(newState)
     UpdateButton()
 end
 
-local function Save(byKey, total, skipped)
+local function Finish(total, keyCount, skipped, compared)
+    SetState("idle")
+    if skipped > 0 then
+        ns.Print("scan done: %d auctions, %d items with a buyout, %d auctions skipped (item data not loaded).",
+            total, keyCount, skipped)
+    else
+        ns.Print("scan done: %d auctions, %d items with a buyout.", total, keyCount)
+    end
+    if ns.ObservedSeconds() < ns.MIN_OBSERVED then
+        ns.Print("activity needs more data: %s.", ns.SCAN_ADVICE)
+    elseif not compared then
+        ns.Print("activity not updated: the previous scan is more than 2 hours old.")
+    end
+    if ns.RefreshTab then
+        ns.RefreshTab()
+    end
+end
+
+local function Save(scan, total, skipped)
     SetState("saving")
+    local realm = ns.realm
     local keys = {}
-    for key in pairs(byKey) do
+    for key in pairs(scan.prices) do
         keys[#keys + 1] = key
     end
     local now = ns.Now()
-    local items = ns.realm.items
+    local items = realm.items
+    local snapshot = { at = now, data = {} }
     local index = 0
 
     local function Step()
         local stop = math.min(#keys, index + SAVE_BATCH_SIZE)
         for i = index + 1, stop do
             local key = keys[i]
-            local counts = byKey[key]
-            local prices = {}
-            for price in pairs(counts) do
+            local counts = scan.prices[key]
+            local prices, listed = {}, 0
+            for price, count in pairs(counts) do
                 prices[#prices + 1] = price
+                listed = listed + count
             end
             table.sort(prices)
 
-            local snapshot = ns.SnapshotPrice(prices, counts)
+            local price = ns.SnapshotPrice(prices, counts)
             local entry = items[key]
             if entry then
-                entry[1] = ns.BlendMarket(entry[1], entry[2], snapshot, now)
+                entry[1] = ns.BlendMarket(entry[1], entry[2], price, now)
                 entry[2] = now
                 entry[3] = prices[1]
+                entry[4] = listed
             else
-                items[key] = { snapshot, now, prices[1] }
+                entry = { price, now, prices[1], listed }
+                items[key] = entry
             end
+            entry[5] = scan.links[key]
+            snapshot.data[key] = ns.SerializeGroups(scan.groups[key])
         end
         index = stop
         if index < #keys then
             C_Timer.After(0, Step)
-        else
-            ns.realm.scannedAt = now
-            SetState("idle")
-            if skipped > 0 then
-                ns.Print("scan done: %d auctions, %d items with a buyout, %d auctions skipped (item data not loaded).",
-                    total, #keys, skipped)
-            else
-                ns.Print("scan done: %d auctions, %d items with a buyout.", total, #keys)
+            return
+        end
+
+        for _, entry in pairs(items) do
+            if entry[2] < now then
+                entry[4] = 0
             end
         end
+        realm.scannedAt = now
+        ns.UpdateActivity(realm.snapshot, scan.groups, now, function(compared)
+            realm.snapshot = snapshot
+            Finish(total, #keys, skipped, compared)
+        end)
     end
 
     Step()
@@ -96,14 +124,15 @@ end
 
 local requested = {}
 
-local function ReadRow(byKey, i)
-    local _, _, count, _, _, _, _, _, _, buyout, _, _, _, _, _, _, itemID = C_AuctionHouse.GetReplicateItemInfo(i)
+local function ReadRow(scan, i)
+    local _, _, count, _, _, _, _, _, _, buyout, _, _, _, owner, ownerFullName, _, itemID =
+        C_AuctionHouse.GetReplicateItemInfo(i)
     if not (itemID and buyout and buyout > 0 and count and count > 0) then
         return true
     end
-    local key = itemID
+    local key, link = itemID, nil
     if ns.IsEquippable(itemID) then
-        local link = C_AuctionHouse.GetReplicateItemLink(i)
+        link = C_AuctionHouse.GetReplicateItemLink(i)
         if not link then
             if not requested[itemID] then
                 requested[itemID] = true
@@ -113,13 +142,26 @@ local function ReadRow(byKey, i)
         end
         key = ns.PriceKey(itemID, link)
     end
+
     local unitPrice = math.max(1, math.floor(buyout / count + 0.5))
-    local counts = byKey[key]
+    local counts = scan.prices[key]
     if not counts then
         counts = {}
-        byKey[key] = counts
+        scan.prices[key] = counts
+        scan.groups[key] = {}
+        if type(key) == "string" then
+            scan.links[key] = link
+        end
     end
     counts[unitPrice] = (counts[unitPrice] or 0) + count
+
+    local seller = ownerFullName or owner
+    if not seller or ns.isSecret(seller) then
+        seller = ""
+    end
+    local timeLeft = C_AuctionHouse.GetReplicateItemTimeLeft(i) or 1
+    local band = math.max(0, math.min(3, timeLeft - 1))
+    ns.AddLot(scan.groups[key], seller, unitPrice, band, count)
     return true
 end
 
@@ -130,7 +172,8 @@ local function ReadResults()
     SetState("reading")
     local myToken = token
     local total = C_AuctionHouse.GetNumReplicateItems()
-    local byKey, missing = {}, {}
+    local scan = { prices = {}, groups = {}, links = {} }
+    local missing = {}
     local index = 0
 
     local function Retry()
@@ -139,11 +182,11 @@ local function ReadResults()
         end
         local skipped = 0
         for _, i in ipairs(missing) do
-            if not ReadRow(byKey, i) then
+            if not ReadRow(scan, i) then
                 skipped = skipped + 1
             end
         end
-        Save(byKey, total, skipped)
+        Save(scan, total, skipped)
     end
 
     local function Step()
@@ -152,7 +195,7 @@ local function ReadResults()
         end
         local stop = math.min(total, index + READ_BATCH_SIZE)
         for i = index, stop - 1 do
-            if not ReadRow(byKey, i) then
+            if not ReadRow(scan, i) then
                 missing[#missing + 1] = i
             end
         end
@@ -162,7 +205,7 @@ local function ReadResults()
         elseif #missing > 0 then
             C_Timer.After(MISSING_RETRY_DELAY, Retry)
         else
-            Save(byKey, total, 0)
+            Save(scan, total, 0)
         end
     end
 
@@ -236,6 +279,7 @@ frame:SetScript("OnEvent", function(_, event)
         C_Timer.After(0, function()
             CreateButton()
             UpdateButton()
+            ns.CreateTab()
         end)
         if not ticker then
             ticker = C_Timer.NewTicker(1, UpdateButton)

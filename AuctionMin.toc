@@ -1,13 +1,18 @@
 ## Interface: 16001
 ## Title: AuctionMin
-## Notes: Scans the auction house and shows the market price per item in tooltips.
+## Notes: Scans the auction house and shows the market price and sales activity per item in tooltips.
 ## Version: @project-version@
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## X-License: MIT
 ## X-Curse-Project-ID: 1728074
 ## SavedVariables: AuctionMinDB
 
+libs\LibStub\LibStub.lua
+libs\LibAHTab\LibAHTab.xml
+
 Core.lua
 Market.lua
+Activity.lua
 Scan.lua
 Tooltip.lua
+Tab.lua

@@ -3,7 +3,6 @@ local ADDON, ns = ...
 local SHARE_FACTOR = 1.5
 local MIN_SHARE = 0.05
 local MAX_STEP = 1.2
-local HALF_LIFE = 3 * 24 * 60 * 60
 
 function ns.SnapshotPrice(prices, counts)
     local total = 0
@@ -38,6 +37,6 @@ function ns.BlendMarket(previous, previousAt, snapshot, now)
     if not previous then
         return snapshot
     end
-    local weight = 1 - 0.5 ^ (math.max(0, now - previousAt) / HALF_LIFE)
+    local weight = 1 - 0.5 ^ (math.max(0, now - previousAt) / ns.HALF_LIFE)
     return previous + weight * (snapshot - previous)
 end
