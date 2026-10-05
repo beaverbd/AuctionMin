@@ -1,0 +1,4 @@
+package-as: AuctionMin
+
+ignore:
+  - README.md
