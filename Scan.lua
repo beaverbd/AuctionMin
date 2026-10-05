@@ -2,7 +2,9 @@ local ADDON, ns = ...
 
 local SCAN_COOLDOWN = 15 * 60 + 5
 local RESPONSE_TIMEOUT = 60
-local BATCH_SIZE = 2000
+local READ_BATCH_SIZE = 2000
+local SAVE_BATCH_SIZE = 500
+local MISSING_RETRY_DELAY = 3
 
 local state = "idle"
 local token = 0
@@ -23,7 +25,7 @@ local function UpdateButton()
     if state == "waiting" then
         button:SetText("Waiting for AH...")
         button:Disable()
-    elseif state == "reading" then
+    elseif state == "reading" or state == "saving" then
         button:SetText("Reading...")
         button:Disable()
     else
@@ -43,17 +45,82 @@ local function SetState(newState)
     UpdateButton()
 end
 
-local function Finish(minPrices, total)
+local function Save(byKey, total, skipped)
+    SetState("saving")
+    local keys = {}
+    for key in pairs(byKey) do
+        keys[#keys + 1] = key
+    end
     local now = ns.Now()
     local items = ns.realm.items
-    local n = 0
-    for itemID, price in pairs(minPrices) do
-        items[itemID] = { price, now }
-        n = n + 1
+    local index = 0
+
+    local function Step()
+        local stop = math.min(#keys, index + SAVE_BATCH_SIZE)
+        for i = index + 1, stop do
+            local key = keys[i]
+            local counts = byKey[key]
+            local prices = {}
+            for price in pairs(counts) do
+                prices[#prices + 1] = price
+            end
+            table.sort(prices)
+
+            local snapshot = ns.SnapshotPrice(prices, counts)
+            local entry = items[key]
+            if entry then
+                entry[1] = ns.BlendMarket(entry[1], entry[2], snapshot, now)
+                entry[2] = now
+                entry[3] = prices[1]
+            else
+                items[key] = { snapshot, now, prices[1] }
+            end
+        end
+        index = stop
+        if index < #keys then
+            C_Timer.After(0, Step)
+        else
+            ns.realm.scannedAt = now
+            SetState("idle")
+            if skipped > 0 then
+                ns.Print("scan done: %d auctions, %d items with a buyout, %d auctions skipped (item data not loaded).",
+                    total, #keys, skipped)
+            else
+                ns.Print("scan done: %d auctions, %d items with a buyout.", total, #keys)
+            end
+        end
     end
-    ns.realm.scannedAt = now
-    SetState("idle")
-    ns.Print("scan done: %d auctions, %d items with a buyout.", total, n)
+
+    Step()
+end
+
+local requested = {}
+
+local function ReadRow(byKey, i)
+    local _, _, count, _, _, _, _, _, _, buyout, _, _, _, _, _, _, itemID = C_AuctionHouse.GetReplicateItemInfo(i)
+    if not (itemID and buyout and buyout > 0 and count and count > 0) then
+        return true
+    end
+    local key = itemID
+    if ns.IsEquippable(itemID) then
+        local link = C_AuctionHouse.GetReplicateItemLink(i)
+        if not link then
+            if not requested[itemID] then
+                requested[itemID] = true
+                C_Item.RequestLoadItemDataByID(itemID)
+            end
+            return false
+        end
+        key = ns.PriceKey(itemID, link)
+    end
+    local unitPrice = math.max(1, math.floor(buyout / count + 0.5))
+    local counts = byKey[key]
+    if not counts then
+        counts = {}
+        byKey[key] = counts
+    end
+    counts[unitPrice] = (counts[unitPrice] or 0) + count
+    return true
 end
 
 local function ReadResults()
@@ -63,29 +130,39 @@ local function ReadResults()
     SetState("reading")
     local myToken = token
     local total = C_AuctionHouse.GetNumReplicateItems()
-    local minPrices = {}
+    local byKey, missing = {}, {}
     local index = 0
+
+    local function Retry()
+        if token ~= myToken then
+            return
+        end
+        local skipped = 0
+        for _, i in ipairs(missing) do
+            if not ReadRow(byKey, i) then
+                skipped = skipped + 1
+            end
+        end
+        Save(byKey, total, skipped)
+    end
 
     local function Step()
         if token ~= myToken then
             return
         end
-        local stop = math.min(total, index + BATCH_SIZE)
+        local stop = math.min(total, index + READ_BATCH_SIZE)
         for i = index, stop - 1 do
-            local _, _, count, _, _, _, _, _, _, buyout, _, _, _, _, _, _, itemID = C_AuctionHouse.GetReplicateItemInfo(i)
-            if itemID and buyout and buyout > 0 and count and count > 0 then
-                local unitPrice = math.floor(buyout / count + 0.5)
-                local best = minPrices[itemID]
-                if not best or unitPrice < best then
-                    minPrices[itemID] = unitPrice
-                end
+            if not ReadRow(byKey, i) then
+                missing[#missing + 1] = i
             end
         end
         index = stop
         if index < total then
             C_Timer.After(0, Step)
+        elseif #missing > 0 then
+            C_Timer.After(MISSING_RETRY_DELAY, Retry)
         else
-            Finish(minPrices, total)
+            Save(byKey, total, 0)
         end
     end
 
@@ -173,7 +250,7 @@ frame:SetScript("OnEvent", function(_, event)
             ticker:Cancel()
             ticker = nil
         end
-        if state ~= "idle" then
+        if state == "waiting" or state == "reading" then
             token = token + 1
             SetState("idle")
             ns.Print("scan cancelled: the auction house was closed.")

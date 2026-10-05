@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: AuctionMin
-## Notes: Scans the auction house and shows the lowest buyout per item in tooltips.
+## Notes: Scans the auction house and shows the market price per item in tooltips.
 ## Version: @project-version@
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## X-License: MIT
@@ -8,5 +8,6 @@
 ## SavedVariables: AuctionMinDB
 
 Core.lua
+Market.lua
 Scan.lua
 Tooltip.lua

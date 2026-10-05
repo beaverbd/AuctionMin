@@ -23,10 +23,43 @@ function ns.FormatAge(seconds)
     return ("%dd"):format(math.floor(seconds / 86400))
 end
 
-function ns.GetPrice(itemID)
-    local entry = ns.realm and ns.realm.items[itemID]
+local equippable = {}
+
+function ns.IsEquippable(itemID)
+    local cached = equippable[itemID]
+    if cached == nil then
+        local _, _, _, equipLoc = C_Item.GetItemInfoInstant(itemID)
+        cached = equipLoc ~= nil and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
+        equippable[itemID] = cached
+    end
+    return cached
+end
+
+function ns.PriceKey(itemID, link)
+    if not link or not ns.IsEquippable(itemID) then
+        return itemID
+    end
+    local itemString = link:match("item:([%-%d:]*)")
+    if not itemString then
+        return itemID
+    end
+    local fields = { strsplit(":", itemString) }
+    local suffix = tonumber(fields[7]) or 0
+    local bonusCount = tonumber(fields[13]) or 0
+    if suffix == 0 and bonusCount == 0 then
+        return itemID
+    end
+    local key = itemID .. ":" .. suffix
+    if bonusCount > 0 then
+        key = key .. ":" .. table.concat(fields, ",", 14, math.min(#fields, 13 + bonusCount))
+    end
+    return key
+end
+
+function ns.GetPrice(key)
+    local entry = ns.realm and ns.realm.items[key]
     if entry then
-        return entry[1], entry[2]
+        return math.floor(entry[1] + 0.5), entry[2], entry[3]
     end
 end
 
@@ -38,10 +71,17 @@ local function CountItems()
     return n
 end
 
+local DB_VERSION = 2
+
 local function InitDB()
+    local fresh = AuctionMinDB == nil
     AuctionMinDB = AuctionMinDB or {}
     local db = AuctionMinDB
-    db.version = db.version or 1
+    if not fresh and (db.version or 1) < DB_VERSION then
+        db.realms = nil
+        ns.Print("prices are now market prices: stored data was reset, please run a new scan.")
+    end
+    db.version = DB_VERSION
     if db.auto == nil then
         db.auto = true
     end
@@ -101,9 +141,10 @@ SlashCmdList.AUCTIONMIN = function(msg)
             PrintHelp()
             return
         end
-        local price, seenAt = ns.GetPrice(itemID)
+        local price, seenAt, lowest = ns.GetPrice(ns.PriceKey(itemID, link))
         if price then
-            ns.Print("%s: %s (%s ago)", link, ns.FormatMoney(price), ns.FormatAge(ns.Now() - seenAt))
+            ns.Print("%s: market %s, lowest %s (updated %s ago)", link, ns.FormatMoney(price),
+                ns.FormatMoney(lowest), ns.FormatAge(ns.Now() - seenAt))
         else
             ns.Print("%s: no price.", link)
         end

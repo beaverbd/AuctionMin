@@ -14,6 +14,18 @@ local function BagStackCount(tooltip)
     return item and item.stackCount
 end
 
+local function TooltipLink(data)
+    if data.guid and not ns.isSecret(data.guid) then
+        local link = C_Item.GetItemLinkByGUID(data.guid)
+        if link then
+            return link
+        end
+    end
+    if data.hyperlink and not ns.isSecret(data.hyperlink) then
+        return data.hyperlink
+    end
+end
+
 local function OnItemTooltip(tooltip, data)
     if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
         return
@@ -22,14 +34,15 @@ local function OnItemTooltip(tooltip, data)
     if not itemID or ns.isSecret(itemID) then
         return
     end
-    local price, seenAt = ns.GetPrice(itemID)
+    local link = ns.IsEquippable(itemID) and TooltipLink(data) or nil
+    local price, seenAt = ns.GetPrice(ns.PriceKey(itemID, link))
     if not price then
         return
     end
 
     local age = ns.FormatAge(ns.Now() - seenAt)
     tooltip:AddLine(" ")
-    tooltip:AddLine("Auction House |cff808080(scanned " .. age .. " ago)|r", LABEL_R, LABEL_G, LABEL_B)
+    tooltip:AddLine("Auction market price |cff808080(updated " .. age .. " ago)|r", LABEL_R, LABEL_G, LABEL_B)
     tooltip:AddDoubleLine("   Per item", ns.FormatMoney(price), 1, 1, 1, 1, 1, 1)
 
     local count = BagStackCount(tooltip)
