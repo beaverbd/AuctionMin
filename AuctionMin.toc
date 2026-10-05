@@ -11,9 +11,11 @@ libs\LibStub\LibStub.lua
 libs\LibAHTab\LibAHTab.xml
 
 Core.lua
+History.lua
 Market.lua
 Activity.lua
 Scan.lua
 Search.lua
 Tooltip.lua
+Templates.xml
 Tab.lua

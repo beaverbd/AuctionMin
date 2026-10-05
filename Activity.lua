@@ -124,6 +124,7 @@ local function AddActivity(key, sold, dt, now)
     else
         activity[key] = { sold, dt, now }
     end
+    ns.RecordSales(key, sold, dt, now)
 end
 
 function ns.ObserveLots(key, groups, now)

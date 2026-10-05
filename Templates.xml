@@ -1,0 +1,14 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <Button name="AuctionMinTopTabTemplate" inherits="TabSystemButtonTemplate" virtual="true">
+        <KeyValues>
+            <KeyValue key="isTabOnTop" value="true" type="boolean"/>
+        </KeyValues>
+    </Button>
+
+    <Frame name="AuctionMinTabSystemTemplate" inherits="TabSystemTemplate" virtual="true">
+        <KeyValues>
+            <KeyValue key="tabTemplate" value="AuctionMinTopTabTemplate" type="string"/>
+            <KeyValue key="minTabWidth" value="110" type="number"/>
+        </KeyValues>
+    </Frame>
+</Ui>

@@ -4,6 +4,10 @@ ns.isSecret = issecretvalue or function() return false end
 
 ns.HALF_LIFE = 3 * 24 * 60 * 60
 ns.MIN_OBSERVED = 25 * 60
+ns.DEAL_DISCOUNT = 0.2
+ns.DEAL_MAX_AGE = 2 * 60 * 60
+ns.AH_CUT = 0.05
+ns.RESALE_DAYS = 3
 ns.SCAN_ADVICE = "run at least 3 scans 15-60 minutes apart; scans more than 2 hours apart don't count"
 
 function ns.Decay(value, since, now)
@@ -93,6 +97,20 @@ function ns.KeyFromItemKey(itemKey)
     return itemID .. ":" .. suffix
 end
 
+function ns.RememberItemKey(key, itemKey)
+    if ns.realm then
+        ns.realm.itemKeys[key] = (itemKey.itemLevel or 0) .. ":" .. (itemKey.itemSuffix or 0)
+    end
+end
+
+function ns.KnownItemKey(key, itemID)
+    local known = ns.realm and ns.realm.itemKeys[key]
+    if known then
+        local level, suffix = known:match("^(%-?%d+):(%-?%d+)$")
+        return C_AuctionHouse.MakeItemKey(itemID, tonumber(level), tonumber(suffix), 0)
+    end
+end
+
 function ns.GetPrice(key)
     local entry = ns.realm and ns.realm.items[key]
     if entry then
@@ -117,7 +135,13 @@ function ns.GetActivity(key)
     if observed < ns.MIN_OBSERVED then
         return nil
     end
-    return entry[1] / entry[2] * 86400, observed, entry[1] >= 0.5
+    return entry[1] / entry[2] * 86400, observed, entry[1] >= 0.5, entry[1]
+end
+
+ns.FEW_SALES = 3
+
+function ns.FewSales(sold)
+    return sold and math.floor(sold + 0.5) < ns.FEW_SALES
 end
 
 function ns.FormatRate(perDay)
@@ -144,11 +168,14 @@ function ns.FormatSupply(listed, perDay)
 end
 
 function ns.ActivityText(key)
-    local perDay, observed, hasSales = ns.GetActivity(key)
+    local perDay, observed, hasSales, sold = ns.GetActivity(key)
     if not perDay then
         return nil
     elseif not hasSales then
         return ("No sales seen in %s of tracking"):format(ns.FormatDuration(observed))
+    elseif ns.FewSales(sold) then
+        local count = math.floor(sold + 0.5)
+        return ("%d %s seen in %s of tracking"):format(count, count == 1 and "sale" or "sales", ns.FormatDuration(observed))
     end
     local text = "Sells about " .. ns.FormatRate(perDay) .. "/day"
     local _, _, _, listed = ns.GetPrice(key)
@@ -204,6 +231,8 @@ local function InitDB()
     realm.activity = realm.activity or {}
     realm.observed = realm.observed or { 0, 0 }
     realm.lots = realm.lots or {}
+    realm.history = realm.history or {}
+    realm.itemKeys = realm.itemKeys or {}
 
     ns.playerName = ns.SellerName(UnitName("player"))
     ns.db = db
@@ -253,6 +282,7 @@ SlashCmdList.AUCTIONMIN = function(msg)
         wipe(ns.realm.activity)
         ns.realm.observed = { 0, 0 }
         wipe(ns.realm.lots)
+        wipe(ns.realm.history)
         ns.realm.scannedAt = 0
         ns.Print("prices and activity for %s cleared.", ns.realmKey)
     elseif cmd == "" or cmd == "help" then
@@ -270,6 +300,10 @@ SlashCmdList.AUCTIONMIN = function(msg)
             ns.Print("%s: market %s, lowest %s (updated %s ago)", link, ns.FormatMoney(price),
                 ns.FormatMoney(lowest), ns.FormatAge(ns.Now() - seenAt))
             ns.Print("%s", ns.ActivityText(key) or ("activity: not enough data yet, " .. ns.SCAN_ADVICE .. "."))
+            local change, span = ns.GetTrend(key, price)
+            if change then
+                ns.Print("%s", ns.TrendText(change, span))
+            end
         else
             ns.Print("%s: no price.", link)
         end

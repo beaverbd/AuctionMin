@@ -38,7 +38,25 @@ function ns.SnapshotPrice(prices, counts, total)
     return prices[taken]
 end
 
-function ns.ApplyPrice(key, counts, now, total, link)
+local function CheapListings(prices, counts, own, price)
+    local limit = price * (1 - ns.DEAL_DISCOUNT)
+    local units, cost = 0, 0
+    for _, p in ipairs(prices) do
+        if p > limit then
+            break
+        end
+        local n = counts[p] - (own and own[p] or 0)
+        if n > 0 then
+            units = units + n
+            cost = cost + p * n
+        end
+    end
+    if units > 0 then
+        return units, cost
+    end
+end
+
+function ns.ApplyPrice(key, counts, now, total, link, own)
     local prices, loaded = {}, 0
     for price, count in pairs(counts) do
         prices[#prices + 1] = price
@@ -59,6 +77,7 @@ function ns.ApplyPrice(key, counts, now, total, link)
         end
         entry[1] = price
         entry[2] = now
+        entry[6], entry[7] = CheapListings(prices, counts, own, price)
     elseif not entry then
         return
     end
@@ -66,5 +85,8 @@ function ns.ApplyPrice(key, counts, now, total, link)
     entry[4] = total or loaded
     if link then
         entry[5] = link
+    end
+    if price then
+        ns.RecordPrice(key, price, entry[4], now)
     end
 end

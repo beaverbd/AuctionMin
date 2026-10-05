@@ -78,7 +78,7 @@ local function Save(scan, total, skipped)
         local stop = math.min(#keys, index + SAVE_BATCH_SIZE)
         for i = index + 1, stop do
             local key = keys[i]
-            ns.ApplyPrice(key, scan.prices[key], now, nil, scan.links[key])
+            ns.ApplyPrice(key, scan.prices[key], now, nil, scan.links[key], scan.own[key])
         end
         index = stop
         if index < #keys then
@@ -138,6 +138,13 @@ local function ReadRow(scan, i)
         local timeLeft = C_AuctionHouse.GetReplicateItemTimeLeft(i) or 1
         local band = math.max(0, math.min(3, timeLeft - 1))
         ns.AddLot(scan.groups[key], seller, unitPrice, band, count)
+    else
+        local own = scan.own[key]
+        if not own then
+            own = {}
+            scan.own[key] = own
+        end
+        own[unitPrice] = (own[unitPrice] or 0) + count
     end
     return true
 end
@@ -149,7 +156,7 @@ local function ReadResults()
     SetState("reading")
     local myToken = token
     local total = C_AuctionHouse.GetNumReplicateItems()
-    local scan = { prices = {}, groups = {}, links = {} }
+    local scan = { prices = {}, groups = {}, links = {}, own = {} }
     local missing = {}
     local index = 0
 

@@ -42,7 +42,7 @@ end
 local function ProcessCommodity(itemID)
     local complete = C_AuctionHouse.HasFullCommoditySearchResults(itemID)
     local count = C_AuctionHouse.GetNumCommoditySearchResults(itemID) or 0
-    local counts = {}
+    local counts, own = {}, {}
     local previous, ascending = 0, true
     for i = 1, count do
         local info = C_AuctionHouse.GetCommoditySearchResultInfo(itemID, i)
@@ -53,18 +53,21 @@ local function ProcessCommodity(itemID)
             end
             previous = price
             counts[price] = (counts[price] or 0) + info.quantity
+            if info.numOwnerItems and info.numOwnerItems > 0 then
+                own[price] = (own[price] or 0) + info.numOwnerItems
+            end
         end
     end
 
     local now = ns.Now()
     if complete then
         if next(counts) then
-            ns.ApplyPrice(itemID, counts, now)
+            ns.ApplyPrice(itemID, counts, now, nil, nil, own)
         elseif ns.realm.items[itemID] then
             ns.realm.items[itemID][4] = 0
         end
     elseif ascending and next(counts) then
-        ns.ApplyPrice(itemID, counts, now, C_AuctionHouse.GetCommoditySearchResultsQuantity(itemID))
+        ns.ApplyPrice(itemID, counts, now, C_AuctionHouse.GetCommoditySearchResultsQuantity(itemID), nil, own)
     end
 end
 
@@ -79,13 +82,19 @@ local function ProcessItem(itemKey)
         if info and info.buyoutAmount and info.buyoutAmount > 0 and info.quantity and info.quantity > 0 then
             local itemID = info.itemKey and info.itemKey.itemID or itemKey.itemID
             local key = ns.PriceKey(itemID, info.itemLink)
+            if info.itemKey then
+                ns.RememberItemKey(key, info.itemKey)
+            end
             local data = byKey[key]
             if not data then
-                data = { counts = {}, groups = {}, link = type(key) == "string" and info.itemLink or nil }
+                data = { counts = {}, groups = {}, own = {}, link = type(key) == "string" and info.itemLink or nil }
                 byKey[key] = data
             end
             local unitPrice = math.max(1, math.floor(info.buyoutAmount / info.quantity + 0.5))
             data.counts[unitPrice] = (data.counts[unitPrice] or 0) + info.quantity
+            if info.containsOwnerItem then
+                data.own[unitPrice] = (data.own[unitPrice] or 0) + info.quantity
+            end
             local seller = OwnersName(info.owners)
             if seller ~= ns.playerName then
                 local band
@@ -102,7 +111,7 @@ local function ProcessItem(itemKey)
     local now = ns.Now()
     if next(byKey) then
         for key, data in pairs(byKey) do
-            ns.ApplyPrice(key, data.counts, now, nil, data.link)
+            ns.ApplyPrice(key, data.counts, now, nil, data.link, data.own)
             ns.ObserveLots(key, data.groups, now)
         end
     else

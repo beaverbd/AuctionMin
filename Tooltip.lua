@@ -59,6 +59,11 @@ local function OnItemTooltip(tooltip, data)
             tooltip:AddLine("   " .. activity, 1, 1, 1)
         end
     end
+
+    local change, span = ns.GetTrend(key, price)
+    if change then
+        tooltip:AddLine("   " .. ns.TrendText(change, span), 1, 1, 1)
+    end
 end
 
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, OnItemTooltip)

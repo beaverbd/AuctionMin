@@ -17,7 +17,7 @@ Auction market price (updated 2h ago)
 - Market price **per unit** that ignores single underpriced or overpriced listings; bag tooltips also show the price for the whole stack.
 - Sales activity: estimated units sold per day and how many days the current supply would last.
 - Learns from what you browse: opening an item in the Buy tab updates its price and activity, even while the full scan is on cooldown.
-- An **AuctionMin** tab in the auction house with settings and the most actively traded items, sortable by sales, supply, market price or gold per day.
+- An **AuctionMin** tab in the auction house with settings and two lists: the most actively traded items, and **deals**, items listed well below their market price that also sell.
 - Every price shows how old it is, so stale prices are easy to spot.
 - Nothing else to install: the libraries it uses are bundled.
 
@@ -42,6 +42,19 @@ The auction house doesn't report sales, so AuctionMin compares each scan with th
 
 The numbers are estimates and lean low: a seller who restocks at the same price hides their own sales, and auctions with a bid but no buyout are ignored. They are meant to tell "barely sells" from "sells by the hundreds", not to count every sale. Your own auctions are left out of activity.
 
+## Price history
+
+AuctionMin keeps one point per day for the last 14 days: the market price at the end of the day, how many units were listed and how much sold. Item tooltips show the trend, for example "Price up 12% over 7 days", once there are at least 2 days of history.
+
+Right-click an item in the AuctionMin tab to open its **History**: a 14 day price chart with sales per day below it. Hover a day to see its numbers.
+
+## Deals
+
+The **Deals** list in the AuctionMin tab shows items with units listed at least 20% below their market price, as long as the item also sells. It only uses prices from scans and items you opened in the last 2 hours, because cheap auctions don't last, and it leaves your own auctions out.
+
+- **Deal price** is the average price of those cheap units and **Below** how far under the market price they are.
+- **Profit** estimates what you would make buying the cheap units, at most as many as sell in 3 days, and reselling them at the market price after the 5% auction house cut. Deposits are not included.
+
 ## Learning from what you browse
 
 AuctionMin never sends searches of its own; it reads what the auction house shows you:
@@ -56,7 +69,7 @@ You can turn this off with the "Learn from items you browse" setting.
 
 Open the auction house. If the last full scan was more than 15 minutes ago, AuctionMin starts one automatically; otherwise use the **Full scan** button below the auction house window when its timer runs out. Blizzard allows one full scan per 15 minutes per account.
 
-The **AuctionMin** tab next to Buy, Sell and Auctions has these settings:
+In the **AuctionMin** tab, click an item in either list to open it in the Buy tab, Shift-click it to link it in chat, or right-click it to see its price history. The tab also has these settings:
 
 - Scan when the auction house opens
 - Learn from items you browse
