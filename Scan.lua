@@ -92,7 +92,10 @@ local function Save(scan, total, skipped)
             end
         end
         realm.scannedAt = now
-        ns.ObserveScan(scan.groups, now, previousScanAt, function(compared)
+        for _, sequence in pairs(scan.sequences) do
+            table.sort(sequence, function(a, b) return a[4] < b[4] end)
+        end
+        ns.ObserveScan(scan.sequences, now, previousScanAt, function(compared)
             Finish(total, #keys, skipped, compared)
         end)
     end
@@ -126,7 +129,7 @@ local function ReadRow(scan, i)
     if not counts then
         counts = {}
         scan.prices[key] = counts
-        scan.groups[key] = {}
+        scan.sequences[key] = {}
         if type(key) == "string" then
             scan.links[key] = link
         end
@@ -137,7 +140,8 @@ local function ReadRow(scan, i)
     if seller ~= ns.playerName then
         local timeLeft = C_AuctionHouse.GetReplicateItemTimeLeft(i) or 1
         local band = math.max(0, math.min(3, timeLeft - 1))
-        ns.AddLot(scan.groups[key], seller, unitPrice, band, count)
+        local sequence = scan.sequences[key]
+        sequence[#sequence + 1] = { unitPrice, count, band, i }
     else
         local own = scan.own[key]
         if not own then
@@ -156,7 +160,7 @@ local function ReadResults()
     SetState("reading")
     local myToken = token
     local total = C_AuctionHouse.GetNumReplicateItems()
-    local scan = { prices = {}, groups = {}, links = {}, own = {} }
+    local scan = { prices = {}, sequences = {}, links = {}, own = {} }
     local missing = {}
     local index = 0
 

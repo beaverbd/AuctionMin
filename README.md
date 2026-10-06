@@ -5,23 +5,28 @@ A lightweight auction house price addon for **World of Warcraft: Forever** (inte
 AuctionMin scans the whole auction house and shows the market price and sales activity per item in item tooltips: in your bags, bank, chat links, merchant windows and anywhere else an item tooltip appears.
 
 ```
-Auction market price (updated 2h ago)
-   Per item              1s 25c
-   Stack of 20             25s
+Auction House (updated 2h ago)
+   Sells at (2,345 sales)  1s 10c
+   Listed at               1s 25c
+   Stack of 20               22s
    Sells about 120/day, 3 days of supply
 ```
 
 ## Features
 
 - Full auction house scan with one click, or automatically when you open the auction house.
-- Market price **per unit** that ignores single underpriced or overpriced listings; bag tooltips also show the price for the whole stack.
+- **What items really sell for:** the typical price of the sales AuctionMin has seen, next to the price of the current listings; bag tooltips also show the value of the whole stack.
 - Sales activity: estimated units sold per day and how many days the current supply would last.
 - Learns from what you browse: opening an item in the Buy tab updates its price and activity, even while the full scan is on cooldown.
 - An **AuctionMin** tab in the auction house with settings and two lists: the most actively traded items, and **deals**, items listed well below their market price that also sell.
 - Every price shows how old it is, so stale prices are easy to spot.
 - Nothing else to install: the libraries it uses are bundled.
 
-## How the market price works
+## How prices work
+
+**Sells at** is the median price of recent sales: half of the units AuctionMin saw sell went for less, half for more. It shows up once AuctionMin has seen at least 5 sales, and older sales count less (their weight halves every 3 days). Unlike an average, a few expensive sales can't pull it up: if 90% of sales are at 1s and 10% at 20s, it says 1s, not 2.9s. The stack value and gold per day use it whenever it's known. The History view also shows the range most sales fall in.
+
+**Listed at** is the price of the current listings:
 
 AuctionMin takes the cheapest part of the units listed for an item and uses the middle price of that group, weighted by quantity. A few bait listings can't pull it down, and the result is always a price that is actually listed.
 
@@ -34,13 +39,15 @@ The price always comes from the latest full scan or the latest time you opened t
 
 The auction house doesn't report sales, so AuctionMin compares each scan with the previous one:
 
-- Units that disappeared from a seller's listings count as sold, but only if their time left shows they couldn't have expired in between.
-- When the same seller lists new units of the item at the same time, they are treated as a cancelled and reposted auction, not a sale.
+- The full scan lists auctions in the order they were created, so AuctionMin follows each auction from one scan to the next: old auctions keep their order and new ones are added at the end. A new auction is never mistaken for an old one, even at the same price.
+- An auction that got smaller was partly bought. Those units always count as sold, because an auction can only be cancelled as a whole.
+- An auction that disappeared counts as sold only if its time left shows it couldn't have expired in between, and only if no cheaper auction of the same item survived. Buyers take the cheapest units first, so an auction that vanished while cheaper ones are still listed was cancelled or reposted. The full scan on Forever doesn't tell who the sellers are, so this is how reposts are told apart from sales.
+- When you open a piece of gear in the Buy tab, the sellers are known, and a seller listing the same item at a new price counts as a repost.
 - Sold units are divided by the observed time. Older observations fade (their weight halves every 3 days), so one unusual hour can't dominate for long.
 
 **To see activity, run at least 3 scans 15-60 minutes apart.** Scans more than 2 hours apart don't count, because most auctions could have expired in between. The more such scans you run over several days, the better the estimates; the AuctionMin tab shows how much scan time they are based on. The previous scan is saved, so logging out between two scans is fine as long as they are less than 2 hours apart.
 
-The numbers are estimates and lean low: a seller who restocks at the same price hides their own sales, and auctions with a bid but no buyout are ignored. They are meant to tell "barely sells" from "sells by the hundreds", not to count every sale. Your own auctions are left out of activity.
+The numbers are estimates and lean low: an auction cancelled while it was the cheapest one looks like a sale, but an auction bought while a cheaper one was still listed doesn't count, and auctions with a bid but no buyout are ignored. They are meant to tell "barely sells" from "sells by the hundreds", not to count every sale. Your own auctions are only recognized in items you open in the Buy tab, because the full scan doesn't name sellers.
 
 ## Price history
 
@@ -50,10 +57,12 @@ Right-click an item in the AuctionMin tab to open its **History**: a 14 day pric
 
 ## Deals
 
-The **Deals** list in the AuctionMin tab shows items with units listed at least 20% below their market price, as long as the item also sells. It only uses prices from scans and items you opened in the last 2 hours, because cheap auctions don't last, and it leaves your own auctions out.
+The **Deals** list in the AuctionMin tab shows items with units listed at least 20% below their expected resale price, as long as the item also sells and AuctionMin has seen at least 3 sales, so a single lucky sale can't make an item look busy. It only uses prices from scans and items you opened in the last 2 hours, because cheap auctions don't last, and it leaves your own auctions out when it can tell them apart (in items you opened).
 
-- **Deal price** is the average price of those cheap units and **Below** how far under the market price they are.
-- **Profit** estimates what you would make buying the cheap units, at most as many as sell in 3 days, and reselling them at the market price after the 5% auction house cut. Deposits are not included.
+- **Resale** is the lowest of the current listings price, the typical price of recent sales and the 7 day median price. Current listings alone can mislead: if an item always sold for 1g and the cheap ones were just bought out, ten new listings at 10g don't make the last 1g auction a deal, because nobody buys at 10g. Its color shows what the price is based on: green for recent sales, yellow for price history, grey for current listings only. Grey deals are not confirmed yet and are listed last.
+- **Deal price** is the average price of the cheap units and **Below** how far under the resale price they are.
+- **Profit** estimates what you would make buying the cheap units, at most as many as sell in 3 days, and reselling them at the resale price after the 5% auction house cut. Deposits are not included.
+
 
 ## Learning from what you browse
 

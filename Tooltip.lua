@@ -42,14 +42,19 @@ local function OnItemTooltip(tooltip, data)
     end
 
     local age = ns.FormatAge(ns.Now() - seenAt)
+    local value, basis, sales = ns.ValuePrice(key)
     tooltip:AddLine(" ")
-    tooltip:AddLine("Auction market price |cff808080(updated " .. age .. " ago)|r", LABEL_R, LABEL_G, LABEL_B)
-    tooltip:AddDoubleLine("   Per item", ns.FormatMoney(price), 1, 1, 1, 1, 1, 1)
+    tooltip:AddLine("Auction House |cff808080(updated " .. age .. " ago)|r", LABEL_R, LABEL_G, LABEL_B)
+    if basis == "sales" then
+        tooltip:AddDoubleLine(("   Sells at |cff808080(%s sales)|r"):format(FormatLargeNumber(math.floor(sales + 0.5))),
+            ns.FormatMoney(value), 1, 1, 1, 1, 1, 1)
+    end
+    tooltip:AddDoubleLine("   Listed at", ns.FormatMoney(price), 1, 1, 1, 1, 1, 1)
 
     if ns.db.showStack then
         local count = BagStackCount(tooltip)
         if count and count > 1 then
-            tooltip:AddDoubleLine(("   Stack of %d"):format(count), ns.FormatMoney(price * count), 1, 1, 1, 1, 1, 1)
+            tooltip:AddDoubleLine(("   Stack of %d"):format(count), ns.FormatMoney(value * count), 1, 1, 1, 1, 1, 1)
         end
     end
 

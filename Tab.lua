@@ -168,6 +168,12 @@ local function RateText(entry)
     return text
 end
 
+local BASIS_COLORS = { sales = "|cff40ff40", history = "|cffffcc33", listings = "|cff999999" }
+
+local function ResaleText(entry)
+    return BASIS_COLORS[entry.basis] .. ns.FormatMoney(math.floor(entry.resale + 0.5)) .. "|r"
+end
+
 local function SupplyText(entry)
     if not entry.listed then
         return "?"
@@ -205,7 +211,7 @@ local function BuildActivity(entries)
         local perDay, _, hasSales, sold = ns.GetActivity(key)
         local item = items[key]
         if perDay and hasSales and item then
-            local price = math.floor(item[1] + 0.5)
+            local price, basis = ns.ValuePrice(key)
             local listed = item[4]
             entries[#entries + 1] = {
                 key = key,
@@ -214,6 +220,7 @@ local function BuildActivity(entries)
                 listed = listed,
                 supply = listed and (listed / perDay) or math.huge,
                 price = price,
+                basis = basis,
                 gold = perDay * price,
             }
         end
@@ -226,17 +233,19 @@ local function BuildDeals(entries)
         local units = item[6]
         if units and item[7] and now - item[2] <= ns.DEAL_MAX_AGE then
             local perDay, _, hasSales, sold = ns.GetActivity(key)
-            if perDay and hasSales then
-                local market = item[1]
+            if perDay and hasSales and not ns.FewSales(sold) then
+                local resale, basis = ns.ResalePrice(key, item[1])
                 local deal = item[7] / units
-                local margin = market * (1 - ns.AH_CUT) - deal
+                local margin = resale * (1 - ns.AH_CUT) - deal
                 local profit = math.min(units, perDay * ns.RESALE_DAYS) * margin
-                if profit >= 1 then
+                if deal <= resale * (1 - ns.DEAL_DISCOUNT) and profit >= 1 then
                     entries[#entries + 1] = {
                         key = key,
                         deal = deal,
-                        discount = 1 - deal / market,
-                        price = market,
+                        discount = 1 - deal / resale,
+                        resale = resale,
+                        basis = basis,
+                        tier = basis == "listings" and 2 or 1,
                         available = units,
                         rate = perDay,
                         sold = sold,
@@ -259,8 +268,10 @@ local VIEWS = {
                 render = RateText, help = RATE_HELP },
             { key = "supply", title = "Supply", width = 120, sortable = true, ascending = true, render = SupplyText,
                 help = "Units listed now and how many days they would last at the current sales rate." },
-            { key = "price", title = "Market price", width = 95, sortable = true,
-                render = function(e) return Money(e.price) end },
+            { key = "price", title = "Price", width = 95, sortable = true,
+                render = function(e) return BASIS_COLORS[e.basis] .. Money(e.price) .. "|r" end,
+                help = "|cff40ff40Green|r: the typical price of recent sales (median), what the item really sells for.\n"
+                    .. "|cff999999Grey|r: the current listings price, until AuctionMin has seen at least 5 sales." },
             { key = "gold", title = "Gold / day", width = 85, sortable = true,
                 render = function(e) return GoldOnly(e.gold) end,
                 help = "Sales per day times the market price: how much gold this item moves." },
@@ -283,21 +294,25 @@ local VIEWS = {
                 help = "Average price of the units listed at least 20% below the market price, your own auctions left out." },
             { key = "discount", title = "Below", width = 55, sortable = true,
                 render = function(e) return ("-%d%%"):format(math.floor(e.discount * 100 + 0.5)) end },
-            { key = "price", title = "Market", width = 85, sortable = true,
-                render = function(e) return Money(e.price) end },
+            { key = "resale", title = "Resale", width = 85, sortable = true, render = ResaleText,
+                help = "Expected resale price: the lowest of the current listings price, the typical price of recent "
+                    .. "sales and the 7 day median price.\n\n|cff40ff40Green|r: confirmed by recent sales.\n"
+                    .. "|cffffcc33Yellow|r: confirmed by price history.\n|cff999999Grey|r: current listings only, not "
+                    .. "confirmed yet. Grey deals are listed last." },
             { key = "available", title = "Units", width = 50, sortable = true,
                 render = function(e) return FormatLargeNumber(e.available) end },
             { key = "rate", title = "Sells / day", width = 65, sortable = true,
                 render = RateText, help = RATE_HELP },
             { key = "profit", title = "Profit", width = 70, sortable = true,
                 render = function(e) return GoldOnly(e.profit) end,
-                help = "Buying the cheap units, at most what sells in 3 days, and reselling them at the market price "
+                help = "Buying the cheap units, at most what sells in 3 days, and reselling them at the resale price "
                     .. "after the 5% auction house cut. Deposits are not included." },
         },
         empty = function(enough)
             if enough then
                 return "No deals right now",
-                    "Deals are items listed at least 20% below their market price that also sell. They come from "
+                    "Deals are items listed at least 20% below their expected resale price that also sell, with at least 3 "
+                    .. "sales seen. They come from "
                     .. "scans and items you opened in the last 2 hours."
             end
             return "No activity data yet", "Deals need sales activity: " .. ns.SCAN_ADVICE .. "."
@@ -358,6 +373,9 @@ local function RefreshView(view, enough)
     view.config.build(entries)
     local sortKey, ascending = view.sortKey, view.sortAscending
     table.sort(entries, function(a, b)
+        if a.tier ~= b.tier then
+            return (a.tier or 0) < (b.tier or 0)
+        end
         if ascending then
             return a[sortKey] < b[sortKey]
         end
@@ -644,7 +662,7 @@ local function ShowDayTooltip(hit)
     if not point then
         GameTooltip:AddLine("No data for this day", 0.6, 0.6, 0.6)
     else
-        GameTooltip:AddDoubleLine("Market price", Money(point.price), 1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine("Listed price", Money(point.price), 1, 0.82, 0, 1, 1, 1)
         GameTooltip:AddDoubleLine("Listed", FormatLargeNumber(point.listed), 1, 0.82, 0, 1, 1, 1)
         if hit.rate then
             GameTooltip:AddDoubleLine("Sales", "about " .. ns.FormatRate(hit.rate) .. "/day", 1, 0.82, 0, 1, 1, 1)
@@ -816,9 +834,23 @@ local function DrawHistory(view)
     view.icon:SetTexture(C_Item.GetItemIconByID(KeyItemID(key)))
     view.name:SetText(link and link:gsub("|h%[(.-)%]|h", "|h%1|h") or ("Item " .. KeyItemID(key)))
     local price = ns.GetPrice(key)
-    view.summary:SetText(price and ("Market price now: " .. Money(price)) or "")
+    local soldPrice, _, low, high = ns.GetSoldPrice(key)
+    local listed = price and ("Listed at " .. Money(price)) or ""
+    if soldPrice then
+        view.summary:SetText("Sells at " .. Money(soldPrice))
+        view.listed:SetText(listed)
+    else
+        view.summary:SetText(listed)
+        view.listed:SetText("")
+    end
     local change, span = ns.GetTrend(key, price)
-    view.trend:SetText(change and ns.TrendText(change, span) or "Trend appears after 2 days of history")
+    local details = change and ns.TrendText(change, span) or "Trend appears after 2 days of history"
+    if soldPrice then
+        local range = Money(low) == Money(high) and ("Most sales at " .. Money(low))
+            or ("Most sales between %s and %s"):format(Money(low), Money(high))
+        details = range .. ". " .. details
+    end
+    view.trend:SetText(details)
 
     local shown = view.frame:IsShown() and DrawCharts(view, ns.GetHistory(key))
     view.charts:SetShown(shown)
@@ -838,21 +870,32 @@ local function CreateHistoryView(inset)
     view.header = CreateFrame("Frame", nil, view.frame)
     view.header:SetAllPoints()
     view.icon = view.header:CreateTexture(nil, "ARTWORK")
-    view.icon:SetSize(32, 32)
-    view.icon:SetPoint("TOPLEFT", inset, "TOPLEFT", 14, -12)
+    view.icon:SetSize(28, 28)
+    view.icon:SetPoint("TOPLEFT", inset, "TOPLEFT", 14, -10)
     view.name = view.header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     view.name:SetPoint("LEFT", view.icon, "RIGHT", 10, 0)
-    view.name:SetWidth(300)
+    view.name:SetWidth(330)
     view.name:SetJustifyH("LEFT")
     view.name:SetWordWrap(false)
     view.summary = view.header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    view.summary:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -16, -14)
-    view.trend = view.header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    view.trend:SetPoint("TOPRIGHT", view.summary, "BOTTOMRIGHT", 0, -4)
+    view.summary:SetPoint("TOPRIGHT", inset, "TOPRIGHT", -16, -10)
+    view.summary:SetWidth(200)
+    view.summary:SetJustifyH("RIGHT")
+    view.summary:SetWordWrap(false)
+    view.listed = view.header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    view.listed:SetPoint("TOPRIGHT", view.summary, "BOTTOMRIGHT", 0, -3)
+    view.listed:SetWidth(200)
+    view.listed:SetJustifyH("RIGHT")
+    view.listed:SetWordWrap(false)
+    view.trend = view.header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    view.trend:SetPoint("TOPLEFT", inset, "TOPLEFT", 14, -44)
+    view.trend:SetPoint("RIGHT", inset, "RIGHT", -16, 0)
+    view.trend:SetJustifyH("LEFT")
+    view.trend:SetWordWrap(false)
 
     view.charts = CreateFrame("Frame", nil, view.frame)
     view.charts:SetAllPoints()
-    view.priceChart = CreateChart(view.charts, "Market price", -60, 190)
+    view.priceChart = CreateChart(view.charts, "Listed price", -60, 190)
     view.salesChart = CreateChart(view.charts, "Sales per day", -288, 80)
     for i = 1, 3 do
         view.dayLabels[i] = view.charts:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")

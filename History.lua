@@ -110,6 +110,21 @@ function ns.GetTrend(key, currentPrice)
     return (currentPrice - past.price) / past.price, span
 end
 
+function ns.HistoryMedian(key)
+    local today = Today(ns.Now())
+    local prices = {}
+    for _, point in ipairs(ns.GetHistory(key)) do
+        if point.day > today - TREND_DAYS then
+            prices[#prices + 1] = point.price
+        end
+    end
+    if #prices < MIN_TREND_DAYS then
+        return nil
+    end
+    table.sort(prices)
+    return prices[math.ceil(#prices / 2)]
+end
+
 function ns.TrendText(change, span)
     local days = span == 1 and "1 day" or (span .. " days")
     local percent = math.floor(math.abs(change) * 100 + 0.5)

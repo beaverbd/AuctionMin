@@ -144,6 +144,49 @@ function ns.FewSales(sold)
     return sold and math.floor(sold + 0.5) < ns.FEW_SALES
 end
 
+ns.SOLD_PRICE_MIN = 5
+
+local function Quantile(list, total, share)
+    local target, cumulative = total * share, 0
+    for _, bucket in ipairs(list) do
+        cumulative = cumulative + bucket[2]
+        if cumulative >= target then
+            return bucket[3]
+        end
+    end
+    return list[#list][3]
+end
+
+function ns.GetSoldPrice(key)
+    local list, total, recent = ns.SoldDistribution(key)
+    if not list or #list == 0 or recent < ns.SOLD_PRICE_MIN then
+        return nil
+    end
+    return Quantile(list, total, 0.5), recent, Quantile(list, total, 0.25), Quantile(list, total, 0.75)
+end
+
+function ns.ValuePrice(key)
+    local sold, count = ns.GetSoldPrice(key)
+    if sold then
+        return math.floor(sold + 0.5), "sales", count
+    end
+    local price = ns.GetPrice(key)
+    return price, "listings"
+end
+
+function ns.ResalePrice(key, market)
+    local resale, basis = market, "listings"
+    local median = ns.HistoryMedian(key)
+    if median then
+        resale, basis = math.min(resale, median), "history"
+    end
+    local sold = ns.GetSoldPrice(key)
+    if sold then
+        resale, basis = math.min(resale, sold), "sales"
+    end
+    return resale, basis
+end
+
 function ns.FormatRate(perDay)
     if perDay < 10 then
         return ("%.1f"):format(perDay)
@@ -197,6 +240,39 @@ local function CountItems()
 end
 
 local DB_VERSION = 4
+local DAY = 24 * 60 * 60
+local KEEP_LOTS = 2 * 60 * 60
+local KEEP_ACTIVITY = 14 * DAY
+local KEEP_HISTORY_DAYS = 14
+local KEEP_PRICES = 30 * DAY
+
+local function PruneRealm(realm, now)
+    local today = math.floor(now / DAY)
+    for key, observation in pairs(realm.lots or {}) do
+        if now - (observation.at or 0) > KEEP_LOTS then
+            realm.lots[key] = nil
+        end
+    end
+    for key, entry in pairs(realm.activity or {}) do
+        if now - (entry[3] or 0) > KEEP_ACTIVITY then
+            realm.activity[key] = nil
+        end
+    end
+    for key, text in pairs(realm.history or {}) do
+        local lastDay = tonumber(text:match("(%d+):[^,]*$"))
+        if not lastDay or lastDay <= today - KEEP_HISTORY_DAYS then
+            realm.history[key] = nil
+        end
+    end
+    for key, entry in pairs(realm.items or {}) do
+        if now - (entry[2] or 0) > KEEP_PRICES then
+            realm.items[key] = nil
+            if realm.itemKeys then
+                realm.itemKeys[key] = nil
+            end
+        end
+    end
+end
 
 local function InitDB()
     local fresh = AuctionMinDB == nil
@@ -216,6 +292,9 @@ local function InitDB()
         end
     end
     db.version = DB_VERSION
+    db.diagnostics = nil
+    db.orderProbe = nil
+    db.probeScans = nil
     for option, default in pairs({ auto = true, showStack = true, showActivity = true, learnFromSearches = true }) do
         if db[option] == nil then
             db[option] = default
@@ -233,6 +312,11 @@ local function InitDB()
     realm.lots = realm.lots or {}
     realm.history = realm.history or {}
     realm.itemKeys = realm.itemKeys or {}
+
+    local now = GetServerTime()
+    for _, stored in pairs(db.realms) do
+        PruneRealm(stored, now)
+    end
 
     ns.playerName = ns.SellerName(UnitName("player"))
     ns.db = db
@@ -300,6 +384,12 @@ SlashCmdList.AUCTIONMIN = function(msg)
             ns.Print("%s: market %s, lowest %s (updated %s ago)", link, ns.FormatMoney(price),
                 ns.FormatMoney(lowest), ns.FormatAge(ns.Now() - seenAt))
             ns.Print("%s", ns.ActivityText(key) or ("activity: not enough data yet, " .. ns.SCAN_ADVICE .. "."))
+            local soldPrice, sales, low, high = ns.GetSoldPrice(key)
+            if soldPrice then
+                ns.Print("sells at %s (%s recent sales), most between %s and %s", ns.FormatMoney(math.floor(soldPrice + 0.5)),
+                    FormatLargeNumber(math.floor(sales + 0.5)), ns.FormatMoney(math.floor(low + 0.5)),
+                    ns.FormatMoney(math.floor(high + 0.5)))
+            end
             local change, span = ns.GetTrend(key, price)
             if change then
                 ns.Print("%s", ns.TrendText(change, span))
