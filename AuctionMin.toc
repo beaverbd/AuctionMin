@@ -16,6 +16,8 @@ Market.lua
 Activity.lua
 Scan.lua
 Search.lua
+Deals.lua
+Highlight.lua
 Tooltip.lua
 Templates.xml
 Tab.lua

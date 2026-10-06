@@ -64,7 +64,7 @@ local function ProcessCommodity(itemID)
         if next(counts) then
             ns.ApplyPrice(itemID, counts, now, nil, nil, own)
         elseif ns.realm.items[itemID] then
-            ns.realm.items[itemID][4] = 0
+            ns.MarkUnlisted(ns.realm.items[itemID])
         end
     elseif ascending and next(counts) then
         ns.ApplyPrice(itemID, counts, now, C_AuctionHouse.GetCommoditySearchResultsQuantity(itemID), nil, own)
@@ -118,7 +118,7 @@ local function ProcessItem(itemKey)
         local key = ns.KeyFromItemKey(itemKey)
         if key then
             if ns.realm.items[key] then
-                ns.realm.items[key][4] = 0
+                ns.MarkUnlisted(ns.realm.items[key])
             end
             ns.ObserveLots(key, {}, now)
         end

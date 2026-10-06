@@ -4,6 +4,7 @@ local TAB_ID = "AuctionMin"
 local SIDE_WIDTH = 180
 local ROW_HEIGHT = 20
 local HEADER_HEIGHT = 19
+local TOOLBAR_HEIGHT = 28
 local TOP_LIMIT = 200
 
 local SETTINGS = {
@@ -11,6 +12,7 @@ local SETTINGS = {
     { option = "learnFromSearches", label = "Learn from items you browse" },
     { option = "showStack", label = "Stack price in bag tooltips" },
     { option = "showActivity", label = "Sales activity in tooltips" },
+    { option = "highlightDeals", label = "Highlight deals in the Buy tab", onChange = function() ns.RefreshHighlights() end },
 }
 
 local RATE_HELP = "Estimated units sold per day. Grey when fewer than 3 sales were seen, so it's only a rough guess."
@@ -39,24 +41,7 @@ local function CreateInset(parent, atlas)
     return inset
 end
 
-local function KeyItemID(key)
-    if type(key) == "number" then
-        return key
-    end
-    return tonumber(key:match("^(%d+)"))
-end
-
-local function KeyLink(key)
-    if type(key) == "string" then
-        local entry = ns.realm.items[key]
-        return entry and entry[5]
-    end
-    local _, link = C_Item.GetItemInfo(key)
-    if not link then
-        C_Item.RequestLoadItemDataByID(key)
-    end
-    return link
-end
+local KeyItemID, KeyLink = ns.KeyItemID, ns.KeyLink
 
 local pendingOpen
 
@@ -227,34 +212,177 @@ local function BuildActivity(entries)
     end
 end
 
-local function BuildDeals(entries)
-    local now = ns.Now()
-    for key, item in pairs(ns.realm.items) do
-        local units = item[6]
-        if units and item[7] and now - item[2] <= ns.DEAL_MAX_AGE then
-            local perDay, _, hasSales, sold = ns.GetActivity(key)
-            if perDay and hasSales and not ns.FewSales(sold) then
-                local resale, basis = ns.ResalePrice(key, item[1])
-                local deal = item[7] / units
-                local margin = resale * (1 - ns.AH_CUT) - deal
-                local profit = math.min(units, perDay * ns.RESALE_DAYS) * margin
-                if deal <= resale * (1 - ns.DEAL_DISCOUNT) and profit >= 1 then
-                    entries[#entries + 1] = {
-                        key = key,
-                        deal = deal,
-                        discount = 1 - deal / resale,
-                        resale = resale,
-                        basis = basis,
-                        tier = basis == "listings" and 2 or 1,
-                        available = units,
-                        rate = perDay,
-                        sold = sold,
-                        profit = profit,
-                    }
-                end
-            end
+local function MoneyInputText(copper)
+    if not copper or copper <= 0 then
+        return ""
+    end
+    local gold, silver, rest = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+    local parts = {}
+    if gold > 0 then
+        parts[#parts + 1] = gold .. "g"
+    end
+    if silver > 0 then
+        parts[#parts + 1] = silver .. "s"
+    end
+    if rest > 0 then
+        parts[#parts + 1] = rest .. "c"
+    end
+    return table.concat(parts)
+end
+
+local MONEY_UNITS = { g = 10000, s = 100, c = 1 }
+
+local function ParseMoney(text)
+    text = text:lower():gsub("%s+", ""):gsub(",", ".")
+    if text == "" then
+        return 0
+    end
+    local plain = tonumber(text)
+    if plain then
+        return plain >= 0 and math.floor(plain * 10000 + 0.5) or nil
+    end
+    if text:gsub("%d+%.?%d*[gsc]", "") ~= "" then
+        return nil
+    end
+    local total = 0
+    for amount, unit in text:gmatch("(%d+%.?%d*)([gsc])") do
+        total = total + tonumber(amount) * MONEY_UNITS[unit]
+    end
+    return math.floor(total + 0.5)
+end
+
+local function FilterLabel(bar, text, anchor, gap)
+    local label = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    if anchor then
+        label:SetPoint("LEFT", anchor, "RIGHT", gap, 0)
+    else
+        label:SetPoint("LEFT", bar, "LEFT", gap, 0)
+    end
+    label:SetText(text)
+    return label
+end
+
+local function FilterBox(bar, width, anchor, gap, read, write, title, help)
+    local box = CreateFrame("EditBox", nil, bar, "InputBoxTemplate")
+    box:SetSize(width, 20)
+    box:SetPoint("LEFT", anchor, "RIGHT", gap, 0)
+    box:SetAutoFocus(false)
+    box:SetFontObject("GameFontHighlightSmall")
+    box:SetMaxLetters(12)
+    local function Show()
+        box:SetText(read())
+        box:SetCursorPosition(0)
+    end
+    box:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    box:SetScript("OnEscapePressed", function(self)
+        Show()
+        self:ClearFocus()
+    end)
+    box:HookScript("OnEditFocusLost", function()
+        local changed = write(box:GetText())
+        Show()
+        if changed then
+            ns.DealFiltersChanged()
+        end
+    end)
+    box:SetScript("OnEnter", function(self)
+        ShowHelp(self, title, help)
+    end)
+    box:SetScript("OnLeave", GameTooltip_Hide)
+    Show()
+    return box
+end
+
+local function MoneyFilter(field)
+    local filters = ns.db.dealFilters
+    return function()
+        return MoneyInputText(filters[field])
+    end, function(text)
+        local value = ParseMoney(text)
+        if value and value ~= filters[field] then
+            filters[field] = value
+            return true
         end
     end
+end
+
+local function FilterCheck(bar, anchor, gap, label, checked, onClick, title, ...)
+    local check = CreateFrame("CheckButton", nil, bar, "UICheckButtonTemplate")
+    check:SetSize(22, 22)
+    check:SetPoint("LEFT", anchor, "RIGHT", gap, 0)
+    check.Text:SetFontObject("GameFontHighlightSmall")
+    check.Text:SetText(label)
+    check:SetChecked(checked)
+    check:SetScript("OnClick", function(self)
+        onClick(self:GetChecked() and true or false)
+    end)
+    local help = { ... }
+    check:SetScript("OnEnter", function(self)
+        ShowHelp(self, title, unpack(help))
+    end)
+    check:SetScript("OnLeave", GameTooltip_Hide)
+    return check
+end
+
+local function BuildDealFilters(bar)
+    local filters = ns.db.dealFilters
+
+    local profitLabel = FilterLabel(bar, "Min profit", nil, 6)
+    local readProfit, writeProfit = MoneyFilter("minProfit")
+    local profit = FilterBox(bar, 54, profitLabel, 9, readProfit, writeProfit, "Min profit",
+        "Only deals with at least this estimated profit. Type an amount like 1g50s, 80s or 2 (gold). Empty means "
+            .. "any profit.")
+
+    local belowLabel = FilterLabel(bar, "Below", profit, 12)
+    local below = FilterBox(bar, 26, belowLabel, 9, function()
+        return tostring(filters.minBelow)
+    end, function(text)
+        local value = tonumber(text)
+        value = value and math.max(ns.DEAL_MIN_BELOW * 100, math.min(95, math.floor(value + 0.5))) or 20
+        if value ~= filters.minBelow then
+            filters.minBelow = value
+            return true
+        end
+    end, "Below", "How far under the resale price a unit must be listed to count as a deal, in percent. At least 10, "
+        .. "20 by default.")
+    below:SetNumeric(true)
+    below:SetMaxLetters(2)
+    local percent = FilterLabel(bar, "%", below, 3)
+
+    local priceLabel = FilterLabel(bar, "Price", percent, 12)
+    local priceHelp = "Only units listed at this price or more, and at this price or less. Type an amount like "
+        .. "1g50s, 80s or 2 (gold). Empty means no limit."
+    local readMin, writeMin = MoneyFilter("minPrice")
+    local minPrice = FilterBox(bar, 54, priceLabel, 9, readMin, writeMin, "Price", priceHelp)
+    local toLabel = FilterLabel(bar, "to", minPrice, 6)
+    local readMax, writeMax = MoneyFilter("maxPrice")
+    local maxPrice = FilterBox(bar, 54, toLabel, 9, readMax, writeMax, "Price", priceHelp)
+
+    local confirmed = FilterCheck(bar, maxPrice, 8, "Sales confirmed", filters.confirmed, function(value)
+        filters.confirmed = value
+        ns.DealFiltersChanged()
+    end, "Sales confirmed", "Only deals whose resale price is confirmed by sales AuctionMin has seen, the green "
+        .. "ones. Hides deals based on price history or current listings only.")
+
+    FilterCheck(bar, confirmed.Text, 10, "Watch", ns.db.watch, function(value)
+        ns.db.watch = value
+        ns.ResetDealWatch()
+        ns.RefreshTab()
+    end, "Watch", "While the auction house is open, AuctionMin runs a full scan every time the 15 minute timer "
+        .. "runs out and plays a sound when new deals that pass these filters appear. New deals are also listed "
+        .. "in chat and marked New here.", "|cff999999Buying is always your own click.|r")
+end
+
+local function DealsEmpty(enough)
+    if enough then
+        return "No deals right now",
+            ("Deals are items listed at least %d%% below their expected resale price that also sell, with at least "
+                .. "3 sales seen. They come from scans and items you opened in the last 2 hours. The filters above "
+                .. "can hide some."):format(ns.db.dealFilters.minBelow)
+    end
+    return "No activity data yet", "Deals need sales activity: " .. ns.SCAN_ADVICE .. "."
 end
 
 local VIEWS = {
@@ -285,13 +413,14 @@ local VIEWS = {
     },
     {
         title = "Deals",
-        build = BuildDeals,
+        build = ns.FindDeals,
+        toolbar = BuildDealFilters,
         sortKey = "profit",
         columns = {
             { key = "item", title = "Item", width = 180 },
             { key = "deal", title = "Deal price", width = 85, sortable = true, ascending = true,
                 render = function(e) return Money(e.deal) end,
-                help = "Average price of the units listed at least 20% below the market price, your own auctions left out." },
+                help = "Average price of the cheap units that pass the filters, your own auctions left out." },
             { key = "discount", title = "Below", width = 55, sortable = true,
                 render = function(e) return ("-%d%%"):format(math.floor(e.discount * 100 + 0.5)) end },
             { key = "resale", title = "Resale", width = 85, sortable = true, render = ResaleText,
@@ -305,18 +434,10 @@ local VIEWS = {
                 render = RateText, help = RATE_HELP },
             { key = "profit", title = "Profit", width = 70, sortable = true,
                 render = function(e) return GoldOnly(e.profit) end,
-                help = "Buying the cheap units, at most what sells in 3 days, and reselling them at the resale price "
-                    .. "after the 5% auction house cut. Deposits are not included." },
+                help = "Buying the cheapest units first, at most what sells in 3 days, and reselling them at the resale "
+                    .. "price after the 5% auction house cut. Deposits are not included." },
         },
-        empty = function(enough)
-            if enough then
-                return "No deals right now",
-                    "Deals are items listed at least 20% below their expected resale price that also sell, with at least 3 "
-                    .. "sales seen. They come from "
-                    .. "scans and items you opened in the last 2 hours."
-            end
-            return "No activity data yet", "Deals need sales activity: " .. ns.SCAN_ADVICE .. "."
-        end,
+        empty = DealsEmpty,
     },
 }
 
@@ -346,7 +467,11 @@ local function UpdateRows(view)
             row.key = entry.key
             row.minPrice = entry.deal or entry.price
             row.icon:SetTexture(C_Item.GetItemIconByID(itemID))
-            row.cells.item:SetText(link and link:gsub("|h%[(.-)%]|h", "|h%1|h") or ("|cff999999Item " .. itemID .. "|r"))
+            local name = link and link:gsub("|h%[(.-)%]|h", "|h%1|h") or ("|cff999999Item " .. itemID .. "|r")
+            if entry.deal and ns.IsNewDeal(entry.key) then
+                name = "|cff40ff40New|r " .. name
+            end
+            row.cells.item:SetText(name)
             for _, column in ipairs(view.config.columns) do
                 if column.render then
                     row.cells[column.key]:SetText(column.render(entry))
@@ -487,6 +612,9 @@ local function BuildSide()
         check.option = setting.option
         check:SetScript("OnClick", function(self)
             ns.db[self.option] = self:GetChecked() and true or false
+            if setting.onChange then
+                setting.onChange()
+            end
         end)
         ui.checks[i] = check
         anchor, anchorOffset = check, -8
@@ -601,8 +729,18 @@ local function CreateView(inset, config)
     view.frame = CreateFrame("Frame", nil, inset)
     view.frame:SetAllPoints()
 
+    local top = -4
+    if config.toolbar then
+        local bar = CreateFrame("Frame", nil, view.frame)
+        bar:SetPoint("TOPLEFT", inset, "TOPLEFT", 4, top)
+        bar:SetPoint("RIGHT", inset, "RIGHT", -4, 0)
+        bar:SetHeight(TOOLBAR_HEIGHT)
+        config.toolbar(bar)
+        top = top - TOOLBAR_HEIGHT
+    end
+
     local headerRow = CreateFrame("Frame", nil, view.frame)
-    headerRow:SetPoint("TOPLEFT", inset, "TOPLEFT", 4, -4)
+    headerRow:SetPoint("TOPLEFT", inset, "TOPLEFT", 4, top)
     headerRow:SetPoint("RIGHT", inset, "RIGHT", -4, 0)
     headerRow:SetHeight(HEADER_HEIGHT)
     local x = 0
@@ -620,7 +758,7 @@ local function CreateView(inset, config)
         UpdateRows(view)
     end)
 
-    local listHeight = 538 - 60 - 30 - 8 - HEADER_HEIGHT - 2
+    local listHeight = 538 - 60 - 30 - 8 - HEADER_HEIGHT - 2 + top + 4
     for i = 1, math.floor(listHeight / ROW_HEIGHT) do
         view.rows[i] = CreateRow(view, i)
     end

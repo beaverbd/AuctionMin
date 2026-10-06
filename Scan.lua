@@ -31,7 +31,7 @@ local function UpdateButton()
     else
         local left = ns.CooldownLeft()
         if left > 0 then
-            button:SetText("Full scan " .. SecondsToClock(left))
+            button:SetText((ns.db.watch and "Watching " or "Full scan ") .. SecondsToClock(left))
             button:Disable()
         else
             button:SetText("Full scan")
@@ -58,9 +58,11 @@ local function Finish(total, keyCount, skipped, compared)
     elseif not compared then
         ns.Print("activity: the previous full scan is more than 2 hours old, this scan starts a new comparison.")
     end
+    ns.CheckNewDeals()
     if ns.RefreshTab then
         ns.RefreshTab()
     end
+    ns.RefreshHighlights()
 end
 
 local function Save(scan, total, skipped)
@@ -88,7 +90,7 @@ local function Save(scan, total, skipped)
 
         for key, entry in pairs(realm.items) do
             if not scan.prices[key] then
-                entry[4] = 0
+                ns.MarkUnlisted(entry)
             end
         end
         realm.scannedAt = now
@@ -234,6 +236,13 @@ function ns.StartScan(silent)
     end)
 end
 
+local function Tick()
+    UpdateButton()
+    if ns.db.watch and state == "idle" and AuctionHouseOpen() and ns.CooldownLeft() == 0 then
+        ns.StartScan(true)
+    end
+end
+
 local function CreateButton()
     if button or not AuctionHouseFrame then
         return
@@ -250,6 +259,9 @@ local function CreateButton()
         local scannedAt = ns.realm.scannedAt
         GameTooltip:AddLine(scannedAt > 0 and ("Last scan: " .. ns.FormatAge(ns.Now() - scannedAt) .. " ago") or "No scans yet",
             1, 1, 1)
+        if ns.db.watch then
+            GameTooltip:AddLine("Watching deals: a new scan starts as soon as the timer runs out.", 0.25, 1, 0.25, true)
+        end
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", GameTooltip_Hide)
@@ -268,9 +280,11 @@ frame:SetScript("OnEvent", function(_, event)
             CreateButton()
             UpdateButton()
             ns.CreateTab()
+            ns.InstallHighlights()
+            ns.SeedDealWatch()
         end)
         if not ticker then
-            ticker = C_Timer.NewTicker(1, UpdateButton)
+            ticker = C_Timer.NewTicker(1, Tick)
         end
         if ns.db.auto and ns.CooldownLeft() == 0 then
             C_Timer.After(1, function()

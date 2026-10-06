@@ -4,7 +4,7 @@ ns.isSecret = issecretvalue or function() return false end
 
 ns.HALF_LIFE = 3 * 24 * 60 * 60
 ns.MIN_OBSERVED = 25 * 60
-ns.DEAL_DISCOUNT = 0.2
+ns.DEAL_MIN_BELOW = 0.1
 ns.DEAL_MAX_AGE = 2 * 60 * 60
 ns.AH_CUT = 0.05
 ns.RESALE_DAYS = 3
@@ -85,13 +85,51 @@ function ns.SellerName(name)
     return name:match("^[^-]*")
 end
 
+function ns.KeyItemID(key)
+    if type(key) == "number" then
+        return key
+    end
+    return tonumber(key:match("^(%d+)"))
+end
+
+function ns.KeyLink(key)
+    if type(key) == "string" then
+        local entry = ns.realm.items[key]
+        return entry and entry[5]
+    end
+    local _, link = C_Item.GetItemInfo(key)
+    if not link then
+        C_Item.RequestLoadItemDataByID(key)
+    end
+    return link
+end
+
+local keysByItemKey
+
+local function KnownKeys()
+    if not keysByItemKey and ns.realm then
+        keysByItemKey = {}
+        for key, known in pairs(ns.realm.itemKeys) do
+            keysByItemKey[ns.KeyItemID(key) .. ":" .. known] = key
+        end
+    end
+    return keysByItemKey
+end
+
 function ns.KeyFromItemKey(itemKey)
     local itemID = itemKey and itemKey.itemID
     if not itemID then
         return nil
     end
+    if not ns.IsEquippable(itemID) then
+        return itemID
+    end
     local suffix = itemKey.itemSuffix or 0
-    if suffix == 0 or not ns.IsEquippable(itemID) then
+    local known = KnownKeys()
+    known = known and known[itemID .. ":" .. (itemKey.itemLevel or 0) .. ":" .. suffix]
+    if known then
+        return known
+    elseif suffix == 0 then
         return itemID
     end
     return itemID .. ":" .. suffix
@@ -99,7 +137,11 @@ end
 
 function ns.RememberItemKey(key, itemKey)
     if ns.realm then
-        ns.realm.itemKeys[key] = (itemKey.itemLevel or 0) .. ":" .. (itemKey.itemSuffix or 0)
+        local known = (itemKey.itemLevel or 0) .. ":" .. (itemKey.itemSuffix or 0)
+        ns.realm.itemKeys[key] = known
+        if keysByItemKey then
+            keysByItemKey[ns.KeyItemID(key) .. ":" .. known] = key
+        end
     end
 end
 
@@ -295,9 +337,16 @@ local function InitDB()
     db.diagnostics = nil
     db.orderProbe = nil
     db.probeScans = nil
-    for option, default in pairs({ auto = true, showStack = true, showActivity = true, learnFromSearches = true }) do
+    for option, default in pairs({ auto = true, showStack = true, showActivity = true, learnFromSearches = true,
+        highlightDeals = true, watch = false }) do
         if db[option] == nil then
             db[option] = default
+        end
+    end
+    db.dealFilters = db.dealFilters or {}
+    for filter, default in pairs({ minProfit = 0, minBelow = 20, confirmed = false, minPrice = 0, maxPrice = 0 }) do
+        if db.dealFilters[filter] == nil then
+            db.dealFilters[filter] = default
         end
     end
     db.lastScanAt = db.lastScanAt or 0

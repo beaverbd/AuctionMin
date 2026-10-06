@@ -38,22 +38,28 @@ function ns.SnapshotPrice(prices, counts, total)
     return prices[taken]
 end
 
-local function CheapListings(prices, counts, own, price)
-    local limit = price * (1 - ns.DEAL_DISCOUNT)
-    local units, cost = 0, 0
+local DEAL_LEVELS = 30
+
+local function CheapListings(prices, counts, own, limit)
+    local parts = {}
     for _, p in ipairs(prices) do
-        if p > limit then
+        if p > limit or #parts >= DEAL_LEVELS then
             break
         end
         local n = counts[p] - (own and own[p] or 0)
         if n > 0 then
-            units = units + n
-            cost = cost + p * n
+            parts[#parts + 1] = p .. ":" .. n
         end
     end
-    if units > 0 then
-        return units, cost
+    if #parts > 0 then
+        return table.concat(parts, ",")
     end
+end
+
+function ns.MarkUnlisted(entry)
+    entry[4] = 0
+    entry[6] = nil
+    entry[7] = nil
 end
 
 function ns.ApplyPrice(key, counts, now, total, link, own)
@@ -77,7 +83,12 @@ function ns.ApplyPrice(key, counts, now, total, link, own)
         end
         entry[1] = price
         entry[2] = now
-        entry[6], entry[7] = CheapListings(prices, counts, own, price)
+        local cheap
+        if prices[1] <= price * (1 - ns.DEAL_MIN_BELOW) then
+            local resale = ns.ResalePrice(key, price)
+            cheap = CheapListings(prices, counts, own, resale * (1 - ns.DEAL_MIN_BELOW))
+        end
+        entry[6], entry[7] = cheap, nil
     elseif not entry then
         return
     end

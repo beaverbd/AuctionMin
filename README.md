@@ -18,7 +18,9 @@ Auction House (updated 2h ago)
 - **What items really sell for:** the typical price of the sales AuctionMin has seen, next to the price of the current listings; bag tooltips also show the value of the whole stack.
 - Sales activity: estimated units sold per day and how many days the current supply would last.
 - Learns from what you browse: opening an item in the Buy tab updates its price and activity, even while the full scan is on cooldown.
-- An **AuctionMin** tab in the auction house with settings and two lists: the most actively traded items, and **deals**, items listed well below their market price that also sell.
+- An **AuctionMin** tab in the auction house with settings and two lists: the most actively traded items, and **deals**, items listed well below their market price that also sell, with your own filters.
+- **Watch mode:** a full scan every time the timer allows it and a sound when new deals show up.
+- Deals are highlighted in the Buy tab while you browse.
 - Every price shows how old it is, so stale prices are easy to spot.
 - Nothing else to install: the libraries it uses are bundled.
 
@@ -57,11 +59,32 @@ Right-click an item in the AuctionMin tab to open its **History**: a 14 day pric
 
 ## Deals
 
-The **Deals** list in the AuctionMin tab shows items with units listed at least 20% below their expected resale price, as long as the item also sells and AuctionMin has seen at least 3 sales, so a single lucky sale can't make an item look busy. It only uses prices from scans and items you opened in the last 2 hours, because cheap auctions don't last, and it leaves your own auctions out when it can tell them apart (in items you opened).
+The **Deals** list in the AuctionMin tab shows items with units listed well below their expected resale price (20% by default), as long as the item also sells and AuctionMin has seen at least 3 sales, so a single lucky sale can't make an item look busy. It only uses prices from scans and items you opened in the last 2 hours, because cheap auctions don't last, and it leaves your own auctions out when it can tell them apart (in items you opened).
 
 - **Resale** is the lowest of the current listings price, the typical price of recent sales and the 7 day median price. Current listings alone can mislead: if an item always sold for 1g and the cheap ones were just bought out, ten new listings at 10g don't make the last 1g auction a deal, because nobody buys at 10g. Its color shows what the price is based on: green for recent sales, yellow for price history, grey for current listings only. Grey deals are not confirmed yet and are listed last.
 - **Deal price** is the average price of the cheap units and **Below** how far under the resale price they are.
-- **Profit** estimates what you would make buying the cheap units, at most as many as sell in 3 days, and reselling them at the resale price after the 5% auction house cut. Deposits are not included.
+- **Profit** estimates what you would make buying the cheapest units first, at most as many as sell in 3 days, and reselling them at the resale price after the 5% auction house cut. Deposits are not included.
+
+### Filters
+
+The bar above the list sets which deals you see:
+
+- **Min profit:** hide deals with a smaller estimated profit.
+- **Below:** how far under the resale price a unit must be listed, from 10%, 20% by default.
+- **Price:** only units listed within this price range, for example to stay within your budget.
+- **Sales confirmed:** only deals whose resale price is confirmed by sales AuctionMin has seen (green).
+
+Amounts can be typed as `1g50s`, `80s`, `25c` or just `2` for 2 gold. An empty box means no limit.
+
+### Watch mode
+
+Turn on **Watch** and leave the auction house open: AuctionMin runs a full scan every time the 15 minute timer runs out. When a scan finds new deals that pass your filters, it plays a sound, flashes the game icon in the taskbar, lists them in chat and marks them **New** in the list. A deal that stays listed isn't announced again unless its price drops further. Buying is always your own click: open the deal from the list and buy it in the Buy tab.
+
+The auction house must stay open, and the game logs you out after a while without any input, so watch mode is for when you're nearby.
+
+### Highlights while you browse
+
+Search results and auction lists in the Buy tab mark units that pass the same filters with a green stripe, and their tooltip shows how far below the resale price they are. Search results only show the cheapest price of each item, so the profit filter applies to the auction lists only. Turn this off with the "Highlight deals in the Buy tab" setting.
 
 
 ## Learning from what you browse
@@ -84,6 +107,7 @@ In the **AuctionMin** tab, click an item in either list to open it in the Buy ta
 - Learn from items you browse
 - Stack price in bag tooltips
 - Sales activity in tooltips
+- Highlight deals in the Buy tab
 
 | Command | Description |
 | --- | --- |
