@@ -55,7 +55,7 @@ end
 local function SerializeSequence(sequence)
     local parts = {}
     for i, lot in ipairs(sequence) do
-        parts[i] = ("%d:%d:%d"):format(lot[1], lot[2], lot[3])
+        parts[i] = ("%.0f:%d:%d"):format(lot[1], lot[2], lot[3])
     end
     return table.concat(parts, ",")
 end

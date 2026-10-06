@@ -10,7 +10,7 @@ local function Today(now)
 end
 
 local function Encode(point)
-    return ("%d:%d:%d:%.1f:%d"):format(point.day, point.price, point.listed, point.sold, point.observed)
+    return ("%d:%.0f:%d:%.1f:%d"):format(point.day, point.price, point.listed, point.sold, point.observed)
 end
 
 local function Decode(segment)
@@ -131,5 +131,5 @@ function ns.TrendText(change, span)
     if percent < 3 then
         return "Price stable over " .. days
     end
-    return ("Price %s %d%% over %s"):format(change > 0 and "up" or "down", percent, days)
+    return ("Price %s %.0f%% over %s"):format(change > 0 and "up" or "down", percent, days)
 end
