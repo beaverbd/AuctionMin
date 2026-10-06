@@ -281,6 +281,20 @@ local function CountItems()
     return n
 end
 
+ns.OPTION_DEFAULTS = {
+    auto = true,
+    learnFromSearches = true,
+    highlightDeals = true,
+    watch = false,
+    requireShift = false,
+    showAge = true,
+    showSold = true,
+    showListed = true,
+    showStack = true,
+    showActivity = true,
+    showTrend = true,
+}
+
 local DB_VERSION = 4
 local DAY = 24 * 60 * 60
 local KEEP_LOTS = 2 * 60 * 60
@@ -337,8 +351,7 @@ local function InitDB()
     db.diagnostics = nil
     db.orderProbe = nil
     db.probeScans = nil
-    for option, default in pairs({ auto = true, showStack = true, showActivity = true, learnFromSearches = true,
-        highlightDeals = true, watch = false }) do
+    for option, default in pairs(ns.OPTION_DEFAULTS) do
         if db[option] == nil then
             db[option] = default
         end
@@ -392,6 +405,7 @@ local function PrintHelp()
     ns.Print("/amin scan - full scan (auction house must be open)")
     ns.Print("/amin auto - toggle scan on auction house open")
     ns.Print("/amin status - data and cooldown info")
+    ns.Print("/amin options - open the settings")
     ns.Print("/amin clear - forget prices for this realm and faction")
     ns.Print("/amin <item link> - print the stored price")
 end
@@ -410,6 +424,8 @@ SlashCmdList.AUCTIONMIN = function(msg)
         ns.Print("auto scan %s.", ns.db.auto and "on" or "off")
     elseif cmd == "status" then
         PrintStatus()
+    elseif cmd == "options" or cmd == "settings" or cmd == "config" then
+        ns.OpenOptions()
     elseif cmd == "clear" then
         wipe(ns.realm.items)
         wipe(ns.realm.activity)
@@ -453,4 +469,5 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function()
     InitDB()
+    ns.CreateOptions()
 end)

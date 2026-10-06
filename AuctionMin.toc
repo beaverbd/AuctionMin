@@ -19,5 +19,6 @@ Search.lua
 Deals.lua
 Highlight.lua
 Tooltip.lua
+Options.lua
 Templates.xml
 Tab.lua

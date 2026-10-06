@@ -22,6 +22,7 @@ Auction House (updated 2h ago)
 - **Watch mode:** a full scan every time the timer allows it and a sound when new deals show up.
 - Deals are highlighted in the Buy tab while you browse.
 - Every price shows how old it is, so stale prices are easy to spot.
+- Choose which tooltip lines to show, or show them only while holding Shift.
 - Nothing else to install: the libraries it uses are bundled.
 
 ## How prices work
@@ -101,17 +102,24 @@ You can turn this off with the "Learn from items you browse" setting.
 
 Open the auction house. If the last full scan was more than 15 minutes ago, AuctionMin starts one automatically; otherwise use the **Full scan** button below the auction house window when its timer runs out. Blizzard allows one full scan per 15 minutes per account.
 
-In the **AuctionMin** tab, click an item in either list to open it in the Buy tab, Shift-click it to link it in chat, or right-click it to see its price history. The tab also has these settings:
+In the **AuctionMin** tab, click an item in either list to open it in the Buy tab, Shift-click it to link it in chat, or right-click it to see its price history.
+
+### Settings
+
+All settings are in **Options > AddOns > AuctionMin**, also opened with `/amin options` or the **More settings** button in the AuctionMin tab.
+
+**Item tooltips:** choose which lines to show: the data age, Sells at, Listed at, the stack value, sales activity and the price trend. With **Only while holding Shift**, item tooltips stay short and show the auction house lines only while you hold Shift; tooltips of items linked in chat always show them.
+
+**Auction house:** these are also in the AuctionMin tab:
 
 - Scan when the auction house opens
 - Learn from items you browse
-- Stack price in bag tooltips
-- Sales activity in tooltips
 - Highlight deals in the Buy tab
 
 | Command | Description |
 | --- | --- |
 | `/amin scan` | Start a full scan (the auction house must be open) |
+| `/amin options` | Open the settings |
 | `/amin auto` | Toggle the automatic scan when the auction house opens |
 | `/amin status` | Show stored item count, last scan time, cooldown and activity data |
 | `/amin clear` | Forget prices and activity for the current realm and faction |

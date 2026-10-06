@@ -10,8 +10,6 @@ local TOP_LIMIT = 200
 local SETTINGS = {
     { option = "auto", label = "Scan when the auction house opens" },
     { option = "learnFromSearches", label = "Learn from items you browse" },
-    { option = "showStack", label = "Stack price in bag tooltips" },
-    { option = "showActivity", label = "Sales activity in tooltips" },
     { option = "highlightDeals", label = "Highlight deals in the Buy tab", onChange = function() ns.RefreshHighlights() end },
 }
 
@@ -619,6 +617,19 @@ local function BuildSide()
         ui.checks[i] = check
         anchor, anchorOffset = check, -8
     end
+
+    local more = CreateFrame("Button", nil, side, "UIPanelButtonTemplate")
+    more:SetSize(120, 22)
+    more:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, -12)
+    more:SetText("More settings")
+    more:SetScript("OnClick", function()
+        ns.OpenOptions()
+    end)
+    more:SetScript("OnEnter", function(self)
+        ShowHelp(self, "More settings", "Choose what item tooltips show, including showing prices only while you hold "
+            .. "Shift. Also in Options, AddOns, AuctionMin, or with /amin options.")
+    end)
+    more:SetScript("OnLeave", GameTooltip_Hide)
 end
 
 local function CreateHeader(view, parent, column, x)
